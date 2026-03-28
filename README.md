@@ -62,11 +62,11 @@ npm run upload
 │   └── protocolDetector.js    # 双协议识别逻辑
 ├── public/
 │   ├── index.html             # 实时解析页面
-│   ├── fileParser.html        # 日志文件解析页面
-│   └── db/                    # 点表SQLite文件目录（自备）
+│   └── fileParser.html        # 日志文件解析页面
 ├── upload/
 │   ├── upload.js              # 远程部署脚本
 │   └── test.js
+├── .env                       # 环境变量文件
 └── package.json
 ```
 
@@ -84,6 +84,16 @@ npm run upload
 3. 选择协议模式（推荐自动识别）
 4. 点击「▶ 解析 Log」
 5. 下载带注解的结果文件
+
+### 环境变量
+如果你需要将项目运行再公网服务器上需要修改环境变量
+```
+SSH_HOST=host
+SSH_USER=user
+SSH_PASSWORD=Password
+SSH_PORT=22
+```
+上传路径需要在upload脚本里面修改
 
 ## 依赖说明
 
@@ -105,7 +115,7 @@ npm run upload
 
 ## Changelog
 
-### [2.0.0] - 2026-03-28
+### [1.1.0] - 2026-03-28
 
 **新增功能**
 - ✨ 日志文件解析页面（fileParser.html）
@@ -127,7 +137,7 @@ npm run upload
 **删除**
 - 🗑️ 移除未使用的 sqlite3 依赖（前端sql.js已覆盖）
 
-### [1.1.0] - 2026-03-15
+### [1.0.0] - 2026-03-15
 
 **新增功能**
 - 🎯 实时IEC 101解析支持
@@ -143,7 +153,7 @@ npm run upload
 - 🗄️ 点表数据库支持（SQLite + JSON）
 - 📊 完整的ASDU类型渲染（遥测、遥信、遥控等）
 
-### [1.0.0] - 2026-03-01
+### [0.0.0] - 2026-03-01
 
 **初始版本**
 - ⚡ IEC 104 完整规约解析
