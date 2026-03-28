@@ -5,29 +5,101 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IEC 104/101 规约解析器</title>
     <style>
+        :root {
+            --bg-primary: #f1f5f9;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f8fafc;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-tertiary: #64748b;
+            --border-color: #cbd5e1;
+            --border-light: #e2e8f0;
+            --hover-bg: #f1f5f9;
+            --input-bg: #f8fafc;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-primary: #0f172a;
+                --bg-secondary: #1e293b;
+                --bg-tertiary: #334155;
+                --text-primary: #f1f5f9;
+                --text-secondary: #cbd5e1;
+                --text-tertiary: #94a3b8;
+                --border-color: #475569;
+                --border-light: #334155;
+                --hover-bg: #334155;
+                --input-bg: #1e293b;
+            }
+        }
+
+        html.dark-theme {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-tertiary: #94a3b8;
+            --border-color: #475569;
+            --border-light: #334155;
+            --hover-bg: #334155;
+            --input-bg: #1e293b;
+        }
+
+        html.light-theme {
+            --bg-primary: #f1f5f9;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f8fafc;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-tertiary: #64748b;
+            --border-color: #cbd5e1;
+            --border-light: #e2e8f0;
+            --hover-bg: #f1f5f9;
+            --input-bg: #f8fafc;
+        }
+
         * { box-sizing: border-box; }
         body {
             font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-            background: #f1f5f9; margin: 0; padding: 20px;
+            background: var(--bg-primary); margin: 0; padding: 20px;
             display: flex; justify-content: center;
+            color: var(--text-primary);
+            transition: background-color 0.3s, color 0.3s;
         }
         .container {
             max-width: 1600px; width: 100%;
-            background: white; border-radius: 20px;
+            background: var(--bg-secondary); border-radius: 20px;
             box-shadow: 0 20px 40px -8px rgba(0,0,0,0.12);
             padding: 28px;
+            transition: background-color 0.3s;
         }
         h1 {
             font-size: 1.8rem; font-weight: 700; margin: 0 0 6px;
-            color: #0f172a; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+            color: var(--text-primary); display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
         }
-        h1 .nav-link { margin-left: auto; }
+        h1 .nav-link {
+            margin-left: 8px; padding: 5px 14px; border: 1.5px solid var(--border-color);
+            border-radius: 20px; font-size: .85rem; color: var(--accent-primary); text-decoration: none;
+            background: var(--panel-bg); transition: background .15s;
+        }
+        h1 .nav-link:hover {
+            background: var(--hover-bg);
+        }
         h1 .badge { background: #2563eb; color: white; font-size: 0.75rem; padding: 3px 12px; border-radius: 30px; font-weight: 400; }
         h1 .badge-101 { background: #0891b2; }
+        .theme-toggle {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 8px 14px; border-radius: 30px; border: 1.5px solid var(--border-color);
+            background: var(--input-bg); color: var(--text-primary);
+            cursor: pointer; font-size: 0.9rem; transition: background 0.15s;
+            margin-left: auto;
+        }
+        .theme-toggle:hover { background: var(--hover-bg); }
         .sub {
-            color: #475569; margin-bottom: 16px;
+            color: var(--text-secondary); margin-bottom: 16px;
             border-left: 4px solid #2563eb; padding: 8px 14px;
-            background: #f8fafc; border-radius: 0 8px 8px 0;
+            background: var(--input-bg); border-radius: 0 8px 8px 0;
             font-size: 0.9rem; line-height: 1.6;
         }
 
@@ -35,29 +107,29 @@
         .db-bar {
             display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
             margin-bottom: 16px; padding: 10px 16px;
-            border: 1.5px dashed #cbd5e1; border-radius: 12px;
-            background: #f8fafc; transition: border-color .2s, background .2s;
+            border: 1.5px dashed var(--border-color); border-radius: 12px;
+            background: var(--input-bg); transition: border-color .2s, background .2s;
         }
         .db-bar.ok      { border-style: solid; border-color: #4ade80; background: #f0fdf4; }
         .db-bar.loading { border-color: #f59e0b; background: #fffbeb; }
         .db-bar.err     { border-color: #f87171; background: #fef2f2; }
-        .db-label { font-size: .85rem; color: #64748b; white-space: nowrap; display:flex; align-items:center; gap:6px; }
+        .db-label { font-size: .85rem; color: var(--text-tertiary); white-space: nowrap; display:flex; align-items:center; gap:6px; }
         .db-pill {
             font-size: .78rem; font-weight: 600; padding: 2px 10px;
             border-radius: 20px; white-space: nowrap;
         }
         .db-pill.ok      { background: #dcfce7; color: #16a34a; }
         .db-pill.loading { background: #fef3c7; color: #d97706; }
-        .db-pill.none    { background: #f1f5f9; color: #94a3b8; }
+        .db-pill.none    { background: var(--input-bg); color: var(--text-tertiary); }
         .db-pill.err     { background: #fee2e2; color: #dc2626; }
         .db-file-btn {
             display: inline-flex; align-items: center; gap: 5px;
             padding: 6px 14px; border-radius: 30px; font-size: .83rem; font-weight: 500;
-            cursor: pointer; border: 1.5px solid #cbd5e1; background: white; color: #334155;
+            cursor: pointer; border: 1.5px solid var(--border-color); background: var(--bg-secondary); color: var(--text-secondary);
             transition: background .15s;
         }
-        .db-file-btn:hover { background: #f1f5f9; }
-        .db-detail { font-size: .75rem; color: #64748b; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .db-file-btn:hover { background: var(--hover-bg); }
+        .db-detail { font-size: .75rem; color: var(--text-tertiary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .db-clear {
             display: none; align-items: center; gap:4px;
             padding: 4px 11px; border-radius: 30px; font-size: .78rem;
@@ -84,24 +156,24 @@
         .col-name         { display: none; }
         body.has-db .col-name { display: table-cell; }
         .pname { color: #065f46; font-weight: 600; font-size: .82rem; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .pname-fallback { color: #94a3b8; font-size: .82rem; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-style:italic; }
-        .pname-none { color: #cbd5e1; font-size: .75rem; }
+        .pname-fallback { color: var(--text-tertiary); font-size: .82rem; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-style:italic; }
+        .pname-none { color: var(--border-light); font-size: .75rem; }
 
         /* ── 输入区 ── */
         .input-area { position: relative; }
         textarea {
             width: 100%; height: 150px; padding: 14px;
             font-family: 'JetBrains Mono', 'Fira Code', monospace;
-            font-size: 0.88rem; border: 1.5px solid #cbd5e1;
-            border-radius: 12px; background: #f8fafc; resize: vertical;
+            font-size: 0.88rem; border: 1.5px solid var(--border-color);
+            border-radius: 12px; background: var(--input-bg); color: var(--text-primary); resize: vertical;
         }
         textarea:focus { outline: 2px solid #2563eb; outline-offset: 2px; }
         .hint {
-            margin-top: 6px; font-size: 0.78rem; color: #64748b;
-            background: #f8fafc; padding: 6px 12px; border-radius: 6px;
-            border: 1px solid #e2e8f0;
+            margin-top: 6px; font-size: 0.78rem; color: var(--text-tertiary);
+            background: var(--input-bg); padding: 6px 12px; border-radius: 6px;
+            border: 1px solid var(--border-light);
         }
-        .hint code { background: #e2e8f0; padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+        .hint code { background: var(--border-light); padding: 1px 5px; border-radius: 3px; font-family: monospace; }
         .btn-group { margin: 14px 0 24px; display: flex; gap: 10px; flex-wrap: wrap; }
         .btn {
             display: inline-flex; align-items: center; gap: 6px;
@@ -113,8 +185,8 @@
         .btn:hover { transform: translateY(-1px); }
         .btn-primary { background: #2563eb; color: white; border-color: #2563eb; box-shadow: 0 4px 8px -2px rgba(37,99,235,.3); }
         .btn-primary:hover { background: #1d4ed8; }
-        .btn-ghost { background: white; color: #334155; border-color: #cbd5e1; }
-        .btn-ghost:hover { background: #f1f5f9; }
+        .btn-ghost { background: var(--bg-secondary); color: var(--text-secondary); border-color: var(--border-color); }
+        .btn-ghost:hover { background: var(--hover-bg); }
         .error-box {
             background: #fee2e2; color: #b91c1c; padding: 12px 18px;
             border-radius: 10px; margin-bottom: 16px; font-family: monospace;
@@ -126,27 +198,27 @@
         .proto-101 { display:inline-block; font-size:.68rem; font-weight:700; background:#cffafe; color:#0e7490; padding:1px 7px; border-radius:4px; margin-right:4px; vertical-align:middle; white-space:nowrap; }
 
         /* ── 可折叠区块 ── */
-        .cs { margin-bottom: 16px; border: 1.5px solid #e2e8f0; border-radius: 14px; overflow: hidden; }
-        .cs-head { display:flex; align-items:center; justify-content:space-between; padding:12px 18px; background:#f8fafc; cursor:pointer; user-select:none; border-bottom:1px solid #e2e8f0; transition:background .15s; }
-        .cs-head:hover { background: #f1f5f9; }
-        .cs-head-left { display:flex; align-items:center; gap:8px; font-size:1rem; font-weight:600; color:#0f172a; }
-        .cs-head-left small { font-style:normal; background:#e2e8f0; padding:1px 9px; border-radius:20px; font-size:0.72rem; color:#334155; font-weight:400; }
+        .cs { margin-bottom: 16px; border: 1.5px solid var(--border-light); border-radius: 14px; overflow: hidden; }
+        .cs-head { display:flex; align-items:center; justify-content:space-between; padding:12px 18px; background:var(--input-bg); cursor:pointer; user-select:none; border-bottom:1px solid var(--border-light); transition:background .15s; }
+        .cs-head:hover { background: var(--hover-bg); }
+        .cs-head-left { display:flex; align-items:center; gap:8px; font-size:1rem; font-weight:600; color:var(--text-primary); }
+        .cs-head-left small { font-style:normal; background:var(--border-light); padding:1px 9px; border-radius:20px; font-size:0.72rem; color:var(--text-secondary); font-weight:400; }
         .cs-badge { font-size:0.72rem; font-weight:600; background:#dbeafe; color:#1d4ed8; padding:2px 9px; border-radius:20px; min-width:22px; text-align:center; }
-        .cs-badge.zero { background:#f1f5f9; color:#94a3b8; }
-        .cs-chevron { color:#64748b; font-size:.9rem; transition:transform .25s ease; flex-shrink:0; }
+        .cs-badge.zero { background:var(--input-bg); color:var(--text-tertiary); }
+        .cs-chevron { color:var(--text-tertiary); font-size:.9rem; transition:transform .25s ease; flex-shrink:0; }
         .cs.collapsed .cs-chevron { transform: rotate(-90deg); }
         .cs-body { overflow:hidden; transition:max-height .3s ease, opacity .3s ease; opacity:1; }
         .cs.collapsed .cs-body { opacity: 0; }
 
         /* ── 表格 ── */
-        .table-wrap { overflow-x: auto; background: white; }
+        .table-wrap { overflow-x: auto; background: var(--bg-secondary); }
         table { width:100%; border-collapse:collapse; font-size:0.875rem; min-width:540px; }
-        th { background:#f8fafc; color:#334155; font-weight:600; font-size:0.75rem; text-transform:uppercase; letter-spacing:.3px; padding:10px; border-bottom:1.5px solid #cbd5e1; white-space:nowrap; }
-        td { padding:9px 10px; border-bottom:1px solid #f1f5f9; color:#1e293b; }
+        th { background:var(--input-bg); color:var(--text-secondary); font-weight:600; font-size:0.75rem; text-transform:uppercase; letter-spacing:.3px; padding:10px; border-bottom:1.5px solid var(--border-color); white-space:nowrap; }
+        td { padding:9px 10px; border-bottom:1px solid var(--border-light); color:var(--text-primary); }
         tr:last-child td { border-bottom: none; }
-        tr:hover td { background: #fafbff; }
-        .mono { font-family:'JetBrains Mono',monospace; background:#f1f5f9; padding:1px 5px; border-radius:5px; font-size:0.8rem; }
-        .placeholder { color:#94a3b8; font-style:italic; padding:20px !important; text-align:center; }
+        tr:hover td { background: var(--input-bg); }
+        .mono { font-family:'JetBrains Mono',monospace; background:var(--input-bg); padding:1px 5px; border-radius:5px; font-size:0.8rem; }
+        .placeholder { color:var(--text-tertiary); font-style:italic; padding:20px !important; text-align:center; }
 
         .pn-neg   { color:#dc2626; font-size:.75rem; font-weight:600; }
         .qds-bad  { color:#ef4444; }
@@ -159,11 +231,12 @@
         .type-tag { display:inline-block; font-size:.7rem; padding:1px 6px; border-radius:4px; margin-left:4px; background:#ede9fe; color:#6d28d9; }
 
         /* ── 101链路层 ── */
-        .cs-101 { border-color: #a5f3fc; }
-        .cs-101 .cs-head { background:#ecfeff; border-bottom-color:#a5f3fc; }
+        .cs-101 { border-color: var(--accent-primary); }
+        .cs-101 .cs-head { background: var(--panel-bg); border-bottom-color: var(--accent-primary); }
         .cs-badge-101 { background:#cffafe; color:#0e7490; }
 
         /* ── 事件日志 ── */
+        .log-panel { background: var(--panel-bg); color: var(--text-secondary); padding:16px; font-family:'JetBrains Mono',monospace; font-size:0.83rem; line-height:1.65; }
         .log-panel { background:#0f172a; color:#94a3b8; padding:16px; font-family:'JetBrains Mono',monospace; font-size:0.83rem; line-height:1.65; }
         .log-empty { font-style: italic; }
         .ev-item { padding:5px 0; border-bottom:1px solid #1e293b; word-break:break-all; }
@@ -192,10 +265,11 @@
         tr.row-104 td { background: #eff6ff !important; }
     </style>
 </head>
-<body>
+<body id="root">
 <div class="container">
     <h1>⚡ 104/101规约解析器 <span class="badge">104</span><span class="badge badge-101">101</span>
-      <a href="/fileParser.html" class="nav-link" style="font-size:.82rem;font-weight:400;color:#7c3aed;text-decoration:none;padding:5px 14px;border:1.5px solid #ddd6fe;border-radius:20px;transition:background .15s" onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background=''">📄 点击Log文件解析</a>
+      <button id="themeToggle" class="theme-toggle" style="margin-left:auto">🌙 暗色</button>
+      <a href="/fileParser.html" class="nav-link">📄 点击Log文件解析</a>
     </h1>
     <div class="sub">
         支持 <strong>IEC 60870-5-104</strong> 与 <strong>DL/T634.5101-2002</strong> 双协议同时解析。
@@ -968,6 +1042,68 @@ function renderAll(results) {
     requestAnimationFrame(()=>{
         document.querySelectorAll('.cs:not(.collapsed) .cs-body').forEach(b=>{ b.style.maxHeight=b.scrollHeight+'px'; });
     });
+}
+
+// ── 主题切换 ──
+function initializeTheme() {
+    const html = document.documentElement;
+    const savedTheme = localStorage.getItem('theme');
+    
+    // 确定主题：优先级：保存的 > 系统偏好 > light
+    let theme = savedTheme;
+    if (!theme) {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        theme = prefersDark ? 'dark' : 'light';
+    }
+    
+    applyTheme(theme);
+    const btn = document.getElementById('themeToggle');
+    if (btn) {
+        btn.addEventListener('click', (e) => { e.preventDefault(); toggleTheme(); });
+    }
+    updateThemeButton();
+    
+    // 监听系统主题变化
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+        if (!localStorage.getItem('theme')) {
+            applyTheme(e.matches ? 'dark' : 'light');
+        }
+    });
+}
+
+function applyTheme(theme) {
+    const html = document.documentElement;
+    if (theme === 'dark') {
+        html.classList.add('dark-theme');
+        html.classList.remove('light-theme');
+    } else {
+        html.classList.add('light-theme');
+        html.classList.remove('dark-theme');
+    }
+}
+
+function toggleTheme() {
+    const html = document.documentElement;
+    const isDark = html.classList.contains('dark-theme');
+    const newTheme = isDark ? 'light' : 'dark';
+    
+    localStorage.setItem('theme', newTheme);
+    applyTheme(newTheme);
+    updateThemeButton();
+}
+
+
+function updateThemeButton() {
+    const btn = document.getElementById('themeToggle');
+    if (!btn) return;
+    const isDark = document.documentElement.classList.contains('dark-theme');
+    btn.innerHTML = isDark ? '☀️ 亮色' : '🌙 暗色';
+}
+
+// 页面加载时初始化主题
+document.addEventListener('DOMContentLoaded', initializeTheme);
+if (document.readyState !== 'loading') {
+    initializeTheme();
 }
 </script>
 </body>

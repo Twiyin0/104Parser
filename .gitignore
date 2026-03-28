@@ -9,3 +9,4 @@ setENV.bat
 *.db
 *test*
 *.test.*
+dist/
