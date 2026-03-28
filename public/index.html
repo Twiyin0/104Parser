@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IEC 104/101 规约解析器</title>
+    <style>
+        :root {
+            --bg-primary: #f1f5f9;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f8fafc;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-tertiary: #64748b;
+            --border-color: #cbd5e1;
+            --border-light: #e2e8f0;
+            --hover-bg: #f1f5f9;
+            --input-bg: #f8fafc;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-primary: #0f172a;
+                --bg-secondary: #1e293b;
+                --bg-tertiary: #334155;
+                --text-primary: #f1f5f9;
+                --text-secondary: #cbd5e1;
+                --text-tertiary: #94a3b8;
+                --border-color: #475569;
+                --border-light: #334155;
+                --hover-bg: #334155;
+                --input-bg: #1e293b;
+            }
+        }
+
+        html.dark-theme {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-tertiary: #94a3b8;
+            --border-color: #475569;
+            --border-light: #334155;
+            --hover-bg: #334155;
+            --input-bg: #1e293b;
+        }
+
+        html.light-theme {
+            --bg-primary: #f1f5f9;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f8fafc;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-tertiary: #64748b;
+            --border-color: #cbd5e1;
+            --border-light: #e2e8f0;
+            --hover-bg: #f1f5f9;
+            --input-bg: #f8fafc;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+            background: var(--bg-primary); margin: 0; padding: 20px;
+            display: flex; justify-content: center;
+            color: var(--text-primary);
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .container {
+            max-width: 1600px; width: 100%;
+            background: var(--bg-secondary); border-radius: 20px;
+            box-shadow: 0 20px 40px -8px rgba(0,0,0,0.12);
+            padding: 28px;
+            transition: background-color 0.3s;
+        }
+        h1 {
+            font-size: 1.8rem; font-weight: 700; margin: 0 0 6px;
+            color: var(--text-primary); display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        }
+        h1 .nav-link {
+            margin-left: 8px; padding: 5px 14px; border: 1.5px solid var(--border-color);
+            border-radius: 20px; font-size: .85rem; color: var(--accent-primary); text-decoration: none;
+            background: var(--panel-bg); transition: background .15s;
+        }
+        h1 .nav-link:hover {
+            background: var(--hover-bg);
+        }
+        h1 .badge { background: #2563eb; color: white; font-size: 0.75rem; padding: 3px 12px; border-radius: 30px; font-weight: 400; }
+        h1 .badge-101 { background: #0891b2; }
+        .theme-toggle {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 8px 14px; border-radius: 30px; border: 1.5px solid var(--border-color);
+            background: var(--input-bg); color: var(--text-primary);
+            cursor: pointer; font-size: 0.9rem; transition: background 0.15s;
+            margin-left: auto;
+        }
+        .theme-toggle:hover { background: var(--hover-bg); }
+        .sub {
+            color: var(--text-secondary); margin-bottom: 16px;
+            border-left: 4px solid #2563eb; padding: 8px 14px;
+            background: var(--input-bg); border-radius: 0 8px 8px 0;
+            font-size: 0.9rem; line-height: 1.6;
+        }
+
+        /* ── DB上传条 ── */
+        .db-bar {
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+            margin-bottom: 16px; padding: 10px 16px;
+            border: 1.5px dashed var(--border-color); border-radius: 12px;
+            background: var(--input-bg); transition: border-color .2s, background .2s;
+        }
+        .db-bar.ok      { border-style: solid; border-color: #4ade80; background: #f0fdf4; }
+        .db-bar.loading { border-color: #f59e0b; background: #fffbeb; }
+        .db-bar.err     { border-color: #f87171; background: #fef2f2; }
+        .db-label { font-size: .85rem; color: var(--text-tertiary); white-space: nowrap; display:flex; align-items:center; gap:6px; }
+        .db-pill {
+            font-size: .78rem; font-weight: 600; padding: 2px 10px;
+            border-radius: 20px; white-space: nowrap;
+        }
+        .db-pill.ok      { background: #dcfce7; color: #16a34a; }
+        .db-pill.loading { background: #fef3c7; color: #d97706; }
+        .db-pill.none    { background: var(--input-bg); color: var(--text-tertiary); }
+        .db-pill.err     { background: #fee2e2; color: #dc2626; }
+        .db-file-btn {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 6px 14px; border-radius: 30px; font-size: .83rem; font-weight: 500;
+            cursor: pointer; border: 1.5px solid var(--border-color); background: var(--bg-secondary); color: var(--text-secondary);
+            transition: background .15s;
+        }
+        .db-file-btn:hover { background: var(--hover-bg); }
+        .db-detail { font-size: .75rem; color: var(--text-tertiary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .db-clear {
+            display: none; align-items: center; gap:4px;
+            padding: 4px 11px; border-radius: 30px; font-size: .78rem;
+            cursor: pointer; border: 1.5px solid #fca5a5; background: #fff5f5; color: #ef4444;
+        }
+        .db-bar.ok .db-clear { display: inline-flex; }
+        #dbFileInput { display: none; }
+
+        /* ── 点表类型选择 ── */
+        .table-sel-wrap {
+            display: none; align-items: center; gap: 6px;
+            border-left: 1.5px solid #bbf7d0; padding-left: 10px;
+        }
+        .db-bar.ok .table-sel-wrap { display: flex; }
+        .table-sel-label { font-size: .8rem; color: #166534; white-space: nowrap; font-weight: 500; }
+        #tableSelect {
+            padding: 4px 10px; border-radius: 8px; font-size: .82rem;
+            border: 1.5px solid #86efac; background: white; color: #14532d;
+            cursor: pointer; outline: none;
+        }
+        #tableSelect:focus { border-color: #4ade80; }
+
+        /* ── 点名列：无DB时整列隐藏 ── */
+        .col-name         { display: none; }
+        body.has-db .col-name { display: table-cell; }
+        .pname { color: #065f46; font-weight: 600; font-size: .82rem; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .pname-fallback { color: var(--text-tertiary); font-size: .82rem; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-style:italic; }
+        .pname-none { color: var(--border-light); font-size: .75rem; }
+
+        /* ── 输入区 ── */
+        .input-area { position: relative; }
+        textarea {
+            width: 100%; height: 150px; padding: 14px;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.88rem; border: 1.5px solid var(--border-color);
+            border-radius: 12px; background: var(--input-bg); color: var(--text-primary); resize: vertical;
+        }
+        textarea:focus { outline: 2px solid #2563eb; outline-offset: 2px; }
+        .hint {
+            margin-top: 6px; font-size: 0.78rem; color: var(--text-tertiary);
+            background: var(--input-bg); padding: 6px 12px; border-radius: 6px;
+            border: 1px solid var(--border-light);
+        }
+        .hint code { background: var(--border-light); padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+        .btn-group { margin: 14px 0 24px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 10px 24px; border-radius: 40px;
+            font-size: 0.95rem; font-weight: 500;
+            cursor: pointer; border: 1.5px solid transparent;
+            transition: background 0.15s, transform 0.1s;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn-primary { background: #2563eb; color: white; border-color: #2563eb; box-shadow: 0 4px 8px -2px rgba(37,99,235,.3); }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-ghost { background: var(--bg-secondary); color: var(--text-secondary); border-color: var(--border-color); }
+        .btn-ghost:hover { background: var(--hover-bg); }
+        .error-box {
+            background: #fee2e2; color: #b91c1c; padding: 12px 18px;
+            border-radius: 10px; margin-bottom: 16px; font-family: monospace;
+            border: 1px solid #fecaca; display: none;
+        }
+
+        /* ── 协议徽章 ── */
+        .proto-104 { display:inline-block; font-size:.68rem; font-weight:700; background:#dbeafe; color:#1d4ed8; padding:1px 7px; border-radius:4px; margin-right:4px; vertical-align:middle; white-space:nowrap; }
+        .proto-101 { display:inline-block; font-size:.68rem; font-weight:700; background:#cffafe; color:#0e7490; padding:1px 7px; border-radius:4px; margin-right:4px; vertical-align:middle; white-space:nowrap; }
+
+        /* ── 可折叠区块 ── */
+        .cs { margin-bottom: 16px; border: 1.5px solid var(--border-light); border-radius: 14px; overflow: hidden; }
+        .cs-head { display:flex; align-items:center; justify-content:space-between; padding:12px 18px; background:var(--input-bg); cursor:pointer; user-select:none; border-bottom:1px solid var(--border-light); transition:background .15s; }
+        .cs-head:hover { background: var(--hover-bg); }
+        .cs-head-left { display:flex; align-items:center; gap:8px; font-size:1rem; font-weight:600; color:var(--text-primary); }
+        .cs-head-left small { font-style:normal; background:var(--border-light); padding:1px 9px; border-radius:20px; font-size:0.72rem; color:var(--text-secondary); font-weight:400; }
+        .cs-badge { font-size:0.72rem; font-weight:600; background:#dbeafe; color:#1d4ed8; padding:2px 9px; border-radius:20px; min-width:22px; text-align:center; }
+        .cs-badge.zero { background:var(--input-bg); color:var(--text-tertiary); }
+        .cs-chevron { color:var(--text-tertiary); font-size:.9rem; transition:transform .25s ease; flex-shrink:0; }
+        .cs.collapsed .cs-chevron { transform: rotate(-90deg); }
+        .cs-body { overflow:hidden; transition:max-height .3s ease, opacity .3s ease; opacity:1; }
+        .cs.collapsed .cs-body { opacity: 0; }
+
+        /* ── 表格 ── */
+        .table-wrap { overflow-x: auto; background: var(--bg-secondary); }
+        table { width:100%; border-collapse:collapse; font-size:0.875rem; min-width:540px; }
+        th { background:var(--input-bg); color:var(--text-secondary); font-weight:600; font-size:0.75rem; text-transform:uppercase; letter-spacing:.3px; padding:10px; border-bottom:1.5px solid var(--border-color); white-space:nowrap; }
+        td { padding:9px 10px; border-bottom:1px solid var(--border-light); color:var(--text-primary); }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: var(--input-bg); }
+        .mono { font-family:'JetBrains Mono',monospace; background:var(--input-bg); padding:1px 5px; border-radius:5px; font-size:0.8rem; }
+        .placeholder { color:var(--text-tertiary); font-style:italic; padding:20px !important; text-align:center; }
+
+        .pn-neg   { color:#dc2626; font-size:.75rem; font-weight:600; }
+        .qds-bad  { color:#ef4444; }
+        .op-cancel  { color:#f97316; font-weight:500; }
+        .op-select  { color:#2563eb; font-weight:500; }
+        .op-exec    { color:#16a34a; font-weight:500; }
+        .op-confirm { color:#9333ea; font-weight:500; }
+        .result-ok   { color:#16a34a; font-weight:600; }
+        .result-fail { color:#dc2626; font-weight:600; }
+        .type-tag { display:inline-block; font-size:.7rem; padding:1px 6px; border-radius:4px; margin-left:4px; background:#ede9fe; color:#6d28d9; }
+
+        /* ── 101链路层 ── */
+        .cs-101 { border-color: var(--accent-primary); }
+        .cs-101 .cs-head { background: var(--panel-bg); border-bottom-color: var(--accent-primary); }
+        .cs-badge-101 { background:#cffafe; color:#0e7490; }
+
+        /* ── 事件日志 ── */
+        .log-panel { background: var(--panel-bg); color: var(--text-secondary); padding:16px; font-family:'JetBrains Mono',monospace; font-size:0.83rem; line-height:1.65; }
+        .log-panel { background:#0f172a; color:#94a3b8; padding:16px; font-family:'JetBrains Mono',monospace; font-size:0.83rem; line-height:1.65; }
+        .log-empty { font-style: italic; }
+        .ev-item { padding:5px 0; border-bottom:1px solid #1e293b; word-break:break-all; }
+        .ev-item:last-child { border-bottom: none; }
+        .ev-icon { margin-right: 4px; }
+        .fault-card { border:1px solid #334155; border-radius:8px; margin-bottom:8px; overflow:hidden; }
+        .fault-head { display:flex; align-items:center; justify-content:space-between; padding:9px 14px; background:#1e293b; cursor:pointer; user-select:none; transition:background .15s; }
+        .fault-head:hover { background: #253347; }
+        .fault-title { color:#fbbf24; font-weight:600; font-size:.88rem; }
+        .fault-chev { color:#64748b; font-size:.82rem; transition:transform .25s; flex-shrink:0; }
+        .fault-card.collapsed .fault-chev { transform: rotate(-90deg); }
+        .fault-body { overflow:hidden; transition:max-height .3s ease; }
+        .fault-card.collapsed .fault-body { max-height: 0 !important; }
+        .fault-inner { padding:10px 14px; background:#0a1120; white-space:pre-wrap; color:#7dd3fc; font-size:.8rem; line-height:1.7; }
+        .ev-total   { color: #34d399; }
+        .ev-clock   { color: #60a5fa; }
+        .ev-energy  { color: #a78bfa; }
+        .ev-init    { color: #f59e0b; }
+        .ev-link    { color: #67e8f9; }
+        .ev-reset   { color: #fb923c; }
+        .ev-test    { color: #a3e635; }
+        .ev-unknown { color: #6b7280; }
+
+        .grid-2 { display:flex; flex-direction:column; gap:16px; }
+        tr.row-101 td { background: #ecfeff !important; }
+        tr.row-104 td { background: #eff6ff !important; }
+    </style>
+</head>
+<body id="root">
+<div class="container">
+    <h1>⚡ 104/101规约解析器 <span class="badge">104</span><span class="badge badge-101">101</span>
+      <button id="themeToggle" class="theme-toggle" style="margin-left:auto">🌙 暗色</button>
+      <a href="/fileParser.html" class="nav-link">📄 点击Log文件解析</a>
+    </h1>
+    <div class="sub">
+        支持 <strong>IEC 60870-5-104</strong> 与 <strong>DL/T634.5101-2002</strong> 双协议同时解析。
+        每行一帧十六进制报文。自动识别协议，也可在行首加 <code>[101]</code> 或 <code>[104]</code> 手动指定。<br>
+        101报文：固定帧 <code>10 C A1 A2 CS 16</code>，可变帧 <code>68 L L 68 C A1 A2 [ASDU] CS 16</code>。
+    </div>
+
+    <!-- ── 点表数据库上传 ── -->
+    <div class="db-bar" id="dbBar">
+        <span class="db-label">🗄️ 点表数据库</span>
+        <span class="db-pill none" id="dbPill">未加载</span>
+        <label class="db-file-btn" for="dbFileInput">📂 选择 .db 文件</label>
+        <input type="file" id="dbFileInput" accept=".db,.sqlite,.sqlite3">
+        <span class="db-detail" id="dbDetail"></span>
+        <button class="db-clear" id="dbClear">✕ 移除</button>
+        <!-- 点表类型选择（加载成功后出现） -->
+        <span class="table-sel-wrap">
+            <span class="table-sel-label">📋 点表类型</span>
+            <select id="tableSelect"><option value="">全部</option></select>
+        </span>
+    </div>
+
+    <div class="input-area">
+        <textarea id="hexInput" placeholder="每行一帧，例如：
+68 0E 02 00 00 00 64 01 06 00 01 00 00 00 00 14     (104报文)
+68 0B 0B 68 53 01 00 64 01 06 00 01 00 00 00 14 16  (101可变帧)
+10 49 01 00 4A 16                                   (101固定帧)
+[101] 68 0B 0B 68 53 01 00 64 01 06 00 01 00 00 00 14 16  (手动指定101)"></textarea>
+        <div class="hint">
+            💡 协议自动识别：<code>68...16</code>(L/L/68H结构) → 101可变帧 | <code>10...16</code>(6字节) → 101固定帧 | <code>68...</code>(无16H结尾) → 104 | 手动前缀 <code>[101]</code> / <code>[104]</code> 优先级最高
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn btn-primary" id="parseBtn">🔍 解析报文</button>
+        <button class="btn btn-ghost"   id="clearBtn">🗑️ 清空</button>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+
+    <div class="grid-2">
+            <!-- 遥测 -->
+            <div class="cs" id="sec-yc">
+                <div class="cs-head" onclick="toggleSec('sec-yc')">
+                    <div class="cs-head-left">📊 遥测 <small>YC · TI=9/11/13</small>
+                        <span class="cs-badge zero" id="badge-yc">0</span>
+                    </div>
+                    <span class="cs-chevron">▾</span>
+                </div>
+                <div class="cs-body"><div class="table-wrap">
+                    <table><thead><tr>
+                        <th>#</th><th>协议</th><th>地址(dec)</th><th>地址(hex)</th>
+                        <th class="col-name">点名</th>
+                        <th>数值</th><th>类型</th><th>品质QDS</th>
+                    </tr></thead><tbody id="ycBody"></tbody></table>
+                </div></div>
+            </div>
+
+            <!-- 遥信/SOE -->
+            <div class="cs" id="sec-yx">
+                <div class="cs-head" onclick="toggleSec('sec-yx')">
+                    <div class="cs-head-left">🚦 遥信 / SOE <small>YX · TI=1/3/30/31</small>
+                        <span class="cs-badge zero" id="badge-yx">0</span>
+                    </div>
+                    <span class="cs-chevron">▾</span>
+                </div>
+                <div class="cs-body"><div class="table-wrap">
+                    <table><thead><tr>
+                        <th>#</th><th>协议</th><th>地址(dec)</th><th>地址(hex)</th>
+                        <th class="col-name">点名</th>
+                        <th>状态</th><th>触发时间</th>
+                    </tr></thead><tbody id="yxBody"></tbody></table>
+                </div></div>
+            </div>
+
+            <!-- 电能量 -->
+            <div class="cs" id="sec-energy">
+                <div class="cs-head" onclick="toggleSec('sec-energy')">
+                    <div class="cs-head-left">⚡ 电能量 <small>TI=206/207</small>
+                        <span class="cs-badge zero" id="badge-energy">0</span>
+                    </div>
+                    <span class="cs-chevron">▾</span>
+                </div>
+                <div class="cs-body"><div class="table-wrap">
+                    <table><thead><tr>
+                        <th>#</th><th>协议</th><th>地址(dec)</th><th>地址(hex)</th>
+                        <th class="col-name">点名</th>
+                        <th>数值</th><th>品质QDS</th><th>时标</th>
+                    </tr></thead><tbody id="energyBody"></tbody></table>
+                </div></div>
+            </div>
+
+            <!-- 遥控 -->
+            <div class="cs" id="sec-ctrl">
+                <div class="cs-head" onclick="toggleSec('sec-ctrl')">
+                    <div class="cs-head-left">🎮 遥控 <small>Control · TI=45/46</small>
+                        <span class="cs-badge zero" id="badge-ctrl">0</span>
+                    </div>
+                    <span class="cs-chevron">▾</span>
+                </div>
+                <div class="cs-body"><div class="table-wrap">
+                    <table><thead><tr>
+                        <th>#</th><th>协议</th><th>地址(hex)</th>
+                        <th class="col-name">点名</th>
+                        <th>命令</th><th>操作</th><th>QOC</th><th>点类型</th><th>结果</th>
+                    </tr></thead><tbody id="ctrlBody"></tbody></table>
+                </div></div>
+            </div>
+
+            <!-- 定值读写 -->
+            <div class="cs" id="sec-param">
+                <div class="cs-head" onclick="toggleSec('sec-param')">
+                    <div class="cs-head-left">⚙️ 定值读写 <small>Parameter · TI=200~203</small>
+                        <span class="cs-badge zero" id="badge-param">0</span>
+                    </div>
+                    <span class="cs-chevron">▾</span>
+                </div>
+                <div class="cs-body"><div class="table-wrap">
+                    <table><thead><tr>
+                        <th>协议</th><th>操作</th><th>定值区SN</th><th>地址(hex)</th>
+                        <th class="col-name">点名</th>
+                        <th>数据类型</th><th>数据值</th><th>PI</th>
+                    </tr></thead><tbody id="paramBody"></tbody></table>
+                </div></div>
+            </div>
+
+    </div>
+
+    <!-- 101链路层帧 -->
+    <div class="cs cs-101" id="sec-link101">
+        <div class="cs-head" onclick="toggleSec('sec-link101')">
+            <div class="cs-head-left">🔗 101链路层帧 <small>FT1.2 固定帧 / 无ASDU帧</small>
+                <span class="cs-badge cs-badge-101 zero" id="badge-link101">0</span>
+            </div>
+            <span class="cs-chevron">▾</span>
+        </div>
+        <div class="cs-body"><div class="table-wrap">
+            <table><thead><tr>
+                <th>链路地址</th><th>帧类型</th><th>方向/PRM</th><th>FC功能码</th>
+                <th>FCB</th><th>FCV</th><th>ACD</th><th>DFC</th><th>CS校验</th>
+            </tr></thead><tbody id="link101Body"></tbody></table>
+        </div></div>
+    </div>
+
+    <!-- 其他事件 -->
+    <div class="cs" id="sec-events">
+        <div class="cs-head" onclick="toggleSec('sec-events')">
+            <div class="cs-head-left">📋 其他事件 <small>总召/故障/时钟/初始化/测试/复位/电能量召唤/未知</small>
+                <span class="cs-badge zero" id="badge-events">0</span>
+            </div>
+            <span class="cs-chevron">▾</span>
+        </div>
+        <div class="cs-body">
+            <div class="log-panel" id="eventLog"><span class="log-empty">等待解析…</span></div>
+        </div>
+    </div>
+</div>
+
+<!-- sql.js WebAssembly SQLite（CDN，纯前端，无需服务端） -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════
+// 点表结构
+//
+// allYXdb  = PT.raw.yx  全量遥信行（含所有TableName）
+// allYCdb  = PT.raw.yc  全量遥测行
+// allYKdb  = PT.raw.yk  全量遥控行
+// allENdb  = PT.raw.en  全量电能量行
+//
+// 切换点表类型后，rebuildMaps() 提取选定TableName的行，建立：
+//   switchYXPoint = Map<SwitchPoint, SwitchName>  ← getSwitchPoint(yx, key="入网检")
+//   switchYCPoint = Map<Addr, SwitchName>
+//   switchYKPoint = Map<Addr, SwitchName>
+//   switchENPoint = Map<Addr, SwitchName>
+//
+// IOA → 点名转换规则：
+//   遥信：IOA → NULL表Addr=IOA → SwitchPoint → switchYXPoint.get(SP)
+//         （NULL表建立 IOA→SP 索引，SP唯一对应入网检一条记录）
+//   遥测：直接 switchYCPoint.get(IOA)         （Addr=IOA）
+//   遥控：直接 switchYKPoint.get(IOA)         （Addr=IOA）
+//   电能量：switchENPoint.get(IOA - 0x6400)   （Addr=IOA-0x6400）
+// ══════════════════════════════════════════════════════════
+const PT = {
+    switchYXPoint : new Map(),   // SP → SwitchName（遥信转发表）
+    switchYCPoint : new Map(),   // Addr → SwitchName（遥测）
+    switchYKPoint : new Map(),   // Addr → SwitchName（遥控）
+    switchENPoint : new Map(),   // Addr → SwitchName（电能量）
+    maps : { para: new Map() },
+    raw  : { yc: [], yx: [], yk: [], en: [], para: [] },
+    tableNames : [],
+    curTable   : null,
+    ok         : false,
+};
+
+// 从指定TableName的行提取 SwitchPoint→SwitchName
+function getSwitchPoint(rows, tableName) {
+    const m = new Map();
+    for (const r of rows) {
+        if ((r.TableName ?? null) !== tableName) continue;
+        const sp   = r.SwitchPoint != null ? Number(r.SwitchPoint) : null;
+        const name = r.SwitchName  ? String(r.SwitchName).trim()   : '';
+        if (sp != null && sp > 0 && name) m.set(sp, name);
+    }
+    return m;
+}
+
+// 从指定TableName的行提取 Addr→SwitchName（遥测/遥控/电能量）
+function getAddrMap(rows, tableName) {
+    const m = new Map();
+    for (const r of rows) {
+        if ((r.TableName ?? null) !== tableName) continue;
+        const addr = r.Addr != null ? Number(r.Addr) : null;
+        const name = r.SwitchName ? String(r.SwitchName).trim() : '';
+        if (addr && name) m.set(addr, name);
+    }
+    return m;
+}
+
+// 用选定的 tableName 重建所有查表 Maps
+//
+// 全点表/NULL（默认）：IOA - 偏移 = BoardPoint → key=BoardPoint
+// 转发表（入网检等）：IOA - 偏移 = SwitchPoint → key=SwitchPoint
+//
+// 偏移：遥信=0，遥测=0x4000，遥控=0x6000，电能量=0x6400
+function rebuildMaps(tableName) {
+    PT.curTable = tableName;
+
+    // 是否为转发表（非NULL、非全点表）
+    const isTransfer = (tableName !== null && tableName !== '全点表');
+
+    // 建 key→Name Map
+    // 全点表/NULL：key=Addr，name=Name（装置原始名）
+    // 转发表：     key=SwitchPoint，name=SwitchName（转发名）
+    const buildMap = (rows) => {
+        const m = new Map();
+        for (const r of rows) {
+            if ((r.TableName ?? null) !== tableName) continue;
+            const key  = isTransfer
+                ? (r.SwitchPoint != null ? Number(r.SwitchPoint) : null)
+                : (r.Addr        != null ? Number(r.Addr)        : null);
+            const name = isTransfer
+                ? (r.SwitchName ? String(r.SwitchName).trim() : '')
+                : (r.Name       ? String(r.Name).trim()       : '');
+            if (key != null && key > 0 && name) m.set(key, name);
+        }
+        return m;
+    };
+
+    PT.switchYXPoint = buildMap(PT.raw.yx);
+    PT.switchYCPoint = buildMap(PT.raw.yc);
+    PT.switchYKPoint = buildMap(PT.raw.yk);
+    PT.switchENPoint = buildMap(PT.raw.en);
+
+    // 参数表：UpAddr→Name（只有NULL行）
+    PT.maps.para = new Map();
+    for (const r of PT.raw.para)
+        if (r.UpAddr) PT.maps.para.set(Number(r.UpAddr), String(r.Name ?? '').trim());
+}
+
+// IOA → 点名
+// 转发表：IOA - 偏移 = SwitchPoint → 查名
+// 全点表/NULL：直接用 IOA = Addr → 查名（无偏移）
+function ptName(type, ioa) {
+    if (!PT.ok) return '';
+    const n = Number(ioa);
+    const isTransfer = (PT.curTable !== null && PT.curTable !== '全点表');
+    switch (type) {
+        case 'yx':   return PT.switchYXPoint.get(isTransfer ? n          : n) ?? '';
+        case 'yc':   return PT.switchYCPoint.get(isTransfer ? n - 0x4000 : n) ?? '';
+        case 'yk':   return PT.switchYKPoint.get(isTransfer ? n - 0x6000 : n) ?? '';
+        case 'en':   return PT.switchENPoint.get(isTransfer ? n - 0x6400 : n) ?? '';
+        case 'para': return PT.maps.para.get(n) ?? '';
+        default: return '';
+    }
+}
+
+// <td> 点名单元格
+function nameCell(name) {
+    if (!name) return `<td class="col-name"><span class="pname-none">—</span></td>`;
+    return `<td class="col-name"><span class="pname" title="${esc(name)}">${esc(name)}</span></td>`;
+}
+
+// ── sql.js 初始化 ──────────────────────────────────────────
+let SQL = null;
+initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}` })
+    .then(s => { SQL = s; })
+    .catch(e => console.warn('[sql.js]', e));
+
+// ── DB 文件选择 ─────────────────────────────────────────────
+document.getElementById('dbFileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setDbUi('loading', '解析中…', file.name);
+    try {
+        if (!SQL) throw new Error('sql.js 尚未就绪，请稍后重试');
+        const db = new SQL.Database(new Uint8Array(await file.arrayBuffer()));
+
+        // 通用读表：执行 SQL，返回行对象数组
+        const readTable = (sql) => {
+            try {
+                const stmt = db.prepare(sql);
+                const rows = [];
+                while (stmt.step()) rows.push(stmt.getAsObject());
+                stmt.free();
+                return rows;
+            } catch(ex) { console.warn(sql, ex.message); return []; }
+        };
+
+        PT.raw.yc  = readTable('SELECT Addr, BoardPoint, Name, SwitchPoint, SwitchName, TableName FROM ProjectYcPoint   ORDER BY Addr');
+        PT.raw.yx  = readTable('SELECT Addr, BoardPoint, Name, SwitchPoint, SwitchName, TableName FROM ProjectYxPoint ORDER BY Addr');
+        PT.raw.yk  = readTable('SELECT Addr, BoardPoint, Name, SwitchPoint, SwitchName, TableName FROM ProjectYkPoint   ORDER BY Addr');
+        PT.raw.en  = readTable('SELECT Addr, Name, SwitchPoint, SwitchName, TableName FROM ProjectEnergyPoint ORDER BY Addr');
+        PT.raw.para = readTable('SELECT UpAddr, Name, TableName FROM ProjectParaTransferPoint');
+        db.close();
+
+        // 收集所有 TableName（去重，null=无标签行也保留）
+        const tnSet = new Set();
+        for (const arr of [PT.raw.yc, PT.raw.yx, PT.raw.yk, PT.raw.en])
+            for (const r of arr) {
+                const tn = r.TableName;
+                if (tn === undefined) continue;  // 跳过缺失列
+                tnSet.add(tn ?? null);            // 统一 null/undefined → null
+            }
+        // null 排最后，其余按中文排序
+        PT.tableNames = [...tnSet].sort((a,b) => {
+            if (a == null && b == null) return 0;
+            if (a == null) return 1;
+            if (b == null) return -1;
+            return String(a).localeCompare(String(b), 'zh');
+        });
+
+        // 填充下拉（null → 显示为默认（无标签），排在末尾）
+        const sel = document.getElementById('tableSelect');
+        sel.innerHTML = '';
+        for (const tn of PT.tableNames) {
+            const opt = document.createElement('option');
+            opt.value = tn == null ? '__null__' : tn;
+            opt.textContent = tn == null ? '默认（无标签）' : tn;
+            sel.appendChild(opt);
+        }
+        // 默认选第一个非null的具名表，没有则选第一个
+        const firstNamed = PT.tableNames.find(t => t != null);
+        if (firstNamed != null) {
+            sel.value = firstNamed;
+        } else if (PT.tableNames.length > 0) {
+            sel.value = '__null__';
+        }
+
+        PT.ok = true;
+        applyTableSelect(); // 用选中值构建 maps
+
+        const detail = `${file.name}  遥测 ${PT.raw.yc.length} · 遥信 ${PT.raw.yx.length} · 遥控 ${PT.raw.yk.length} · 电能量 ${PT.raw.en.length} · 参数 ${PT.raw.para.length} 条`;
+        setDbUi('ok', '✓ 已加载', detail);
+        document.body.classList.add('has-db');
+    } catch(err) {
+        PT.ok = false;
+        document.body.classList.remove('has-db');
+        setDbUi('err', '✗ ' + err.message, file.name);
+    }
+    e.target.value = '';
+});
+
+// 点表下拉切换
+document.getElementById('tableSelect').addEventListener('change', applyTableSelect);
+
+function applyTableSelect() {
+    const val = document.getElementById('tableSelect').value;
+    // '__null__' → null（无标签的默认行）
+    rebuildMaps(val === '__null__' ? null : val);
+}
+
+document.getElementById('dbClear').addEventListener('click', () => {
+    PT.raw.yc = []; PT.raw.yx = []; PT.raw.yk = []; PT.raw.en = []; PT.raw.para = [];
+    PT.maps.yc.clear(); PT.maps.yx.clear(); PT.maps.yk.clear(); PT.maps.en.clear(); PT.maps.para.clear();
+    PT.ok = false;
+    document.body.classList.remove('has-db');
+    setDbUi('none', '未加载', '');
+    document.getElementById('dbFileInput').value = '';
+    document.getElementById('tableSelect').innerHTML = '';
+});
+
+function setDbUi(type, pill, detail) {
+    const bar = document.getElementById('dbBar');
+    const p   = document.getElementById('dbPill');
+    const d   = document.getElementById('dbDetail');
+    bar.className = 'db-bar ' + (type==='ok'?'ok':type==='loading'?'loading':type==='err'?'err':'');
+    p.className   = 'db-pill ' + (type==='ok'?'ok':type==='loading'?'loading':type==='err'?'err':'none');
+    p.textContent = pill;
+    d.textContent = detail;
+}
+
+// ══════════════════════════════════════════════════════════
+// UI 工具
+// ══════════════════════════════════════════════════════════
+function toggleSec(id) {
+    const sec = document.getElementById(id), body = sec.querySelector('.cs-body');
+    if (sec.classList.contains('collapsed')) {
+        sec.classList.remove('collapsed');
+        body.style.maxHeight = body.scrollHeight + 'px';
+        body.style.opacity   = '1';
+    } else {
+        body.style.maxHeight = body.scrollHeight + 'px';
+        requestAnimationFrame(() => { sec.classList.add('collapsed'); body.style.maxHeight='0'; body.style.opacity='0'; });
+    }
+}
+function openSec(id)  { const s=document.getElementById(id),b=s.querySelector('.cs-body'); s.classList.remove('collapsed'); b.style.maxHeight=b.scrollHeight+'px'; b.style.opacity='1'; }
+function closeSec(id) { const s=document.getElementById(id),b=s.querySelector('.cs-body'); b.style.maxHeight=b.scrollHeight+'px'; requestAnimationFrame(()=>{ s.classList.add('collapsed'); b.style.maxHeight='0'; b.style.opacity='0'; }); }
+function toggleFault(h) {
+    const c=h.closest('.fault-card'), b=c.querySelector('.fault-body');
+    if (c.classList.contains('collapsed')) { c.classList.remove('collapsed'); b.style.maxHeight=b.scrollHeight+'px'; }
+    else { b.style.maxHeight=b.scrollHeight+'px'; requestAnimationFrame(()=>{ c.classList.add('collapsed'); b.style.maxHeight='0'; }); }
+}
+function setBadge(id,n) { const el=document.getElementById(id); if(!el)return; el.textContent=n; el.classList.toggle('zero',n===0); }
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function protoBadge(p) { return p==='101'?'<span class="proto-101">101</span>':'<span class="proto-104">104</span>'; }
+function qdsStr(qds) {
+    if (qds==null) return '';
+    const b=[], hex=`<span class="mono">0x${qds.toString(16).padStart(2,'0')}</span>`, cls=(qds&0x10)?'qds-bad':'';
+    if(qds&0x01)b.push('溢出'); if(qds&0x04)b.push('被封锁'); if(qds&0x08)b.push('被取代'); if(qds&0x10)b.push('无效'); if(qds&0x20)b.push('非当前');
+    return b.length?`<span class="${cls}">${hex} (${b.join('/')})</span>`:hex;
+}
+function opClass(op) {
+    if(!op)return '';
+    if(op.includes('撤销')||op.includes('否定'))return 'op-cancel';
+    if(op.includes('选择'))return 'op-select';
+    if(op.includes('执行'))return 'op-exec';
+    if(op.includes('确认'))return 'op-confirm';
+    return '';
+}
+function ycValueStr(item) {
+    if(item.value&&typeof item.value==='object'&&item.value.eng!==undefined)
+        return `${item.value.eng} <span class="mono" title="原始整数">(raw:${item.value.raw})</span>`;
+    if(typeof item.value==='number') return String(item.value);
+    return esc(String(item.value??''));
+}
+function addrHex(addr,proto) {
+    const n=Number(addr)||0;
+    return proto==='101'?`0x${n.toString(16).padStart(4,'0')}`:`0x${n.toString(16).padStart(6,'0')}`;
+}
+
+// ══════════════════════════════════════════════════════════
+// 解析按钮
+// ══════════════════════════════════════════════════════════
+document.getElementById('parseBtn').addEventListener('click', async () => {
+    const raw = document.getElementById('hexInput').value;
+    const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+    if (!lines.length) { alert('请输入至少一行报文'); return; }
+    document.getElementById('errorBox').style.display='none';
+    ['ycBody','yxBody','energyBody','ctrlBody','paramBody','link101Body'].forEach(id=>document.getElementById(id).innerHTML='');
+    document.getElementById('eventLog').innerHTML='<span class="log-empty">解析中…</span>';
+    ['yc','yx','energy','ctrl','param','link101','events'].forEach(k=>setBadge('badge-'+k,0));
+    const ctrl=new AbortController(), timer=setTimeout(()=>ctrl.abort(),30000);
+    try {
+        const resp=await fetch('/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lines}),signal:ctrl.signal});
+        clearTimeout(timer);
+        if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        renderAll(await resp.json());
+    } catch(e) {
+        clearTimeout(timer);
+        const box=document.getElementById('errorBox');
+        box.style.display='block';
+        box.textContent=e.name==='AbortError'?'请求超时（30s）':'请求失败: '+e.message;
+        document.getElementById('eventLog').innerHTML='';
+    }
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+    document.getElementById('hexInput').value='';
+    ['ycBody','yxBody','energyBody','ctrlBody','paramBody','link101Body'].forEach(id=>document.getElementById(id).innerHTML='');
+    document.getElementById('eventLog').innerHTML='<span class="log-empty">等待解析…</span>';
+    document.getElementById('errorBox').style.display='none';
+    ['yc','yx','energy','ctrl','param','link101','events'].forEach(k=>setBadge('badge-'+k,0));
+    ['sec-yc','sec-yx','sec-energy','sec-ctrl','sec-param','sec-link101','sec-events'].forEach(closeSec);
+});
+
+// ══════════════════════════════════════════════════════════
+// 主渲染
+// ══════════════════════════════════════════════════════════
+function renderAll(results) {
+    let ycIdx=1,yxIdx=1,ctrlIdx=1,energyIdx=1;
+    const ycRows=[],yxRows=[],ctrlRows=[],paramRows=[],energyRows=[],link101Rows=[],evNodes=[];
+
+    for (const frame of results) {
+        const proto  = frame.protocol||'104';
+        const pb     = protoBadge(proto);
+        const rowCls = proto==='101'?'row-101':'';
+
+        if (frame.type==='error') {
+            evNodes.push(`<div class="ev-item ev-unknown">${pb}<span class="ev-icon">❌</span>${esc(frame.error)}</div>`);
+            continue;
+        }
+
+        // ── 101 链路层固定帧 ──────────────────────────────────────
+        if (frame.type==='link_frame') {
+            const li=frame;
+            const fcbStr=li.ctrl?.fcb!=null?li.ctrl.fcb:'—';
+            const fcvStr=li.ctrl?.fcv!=null?li.ctrl.fcv:'—';
+            const acdStr=li.ctrl?.acd!=null?(li.ctrl.acd?'<span style="color:#f59e0b">1(有数据)</span>':'0'):'—';
+            const dfcStr=li.ctrl?.dfc!=null?(li.ctrl.dfc?'<span style="color:#ef4444">1(满载)</span>':'0'):'—';
+            const csStr =li.csValid?'<span style="color:#16a34a">✓ 正确</span>':'<span style="color:#ef4444">✗ 错误</span>';
+            link101Rows.push(`<tr class="${rowCls}">
+                <td class="mono">${li.linkAddr??'—'}</td>
+                <td>${li.frameType==='fixed'?'固定帧':'可变帧(无ASDU)'}</td>
+                <td>${esc(li.ctrl?.direction??'—')}</td>
+                <td><span class="mono">${li.ctrl?.fc??'—'}</span> ${esc(li.ctrl?.fcName??'')}</td>
+                <td>${fcbStr}</td><td>${fcvStr}</td><td>${acdStr}</td><td>${dfcStr}</td><td>${csStr}</td>
+            </tr>`);
+            continue;
+        }
+
+        switch (frame.type) {
+
+        // ── 遥测 ───────────────────────────────────────────────────
+        case 'yc':
+            (frame.data||[]).forEach(item => {
+                const name = ptName('yc', item.addr);
+                ycRows.push(`<tr class="${rowCls}">
+                    <td>${ycIdx++}</td><td>${pb}</td>
+                    <td>${item.addr??''}</td><td class="mono">${addrHex(item.addr,proto)}</td>
+                    ${nameCell(name)}
+                    <td>${ycValueStr(item)}</td>
+                    <td><span class="type-tag">${esc(item.valueType||'')}</span></td>
+                    <td>${qdsStr(item.qds)}</td>
+                </tr>`);
+            });
+            break;
+
+        // ── 遥信/SOE ───────────────────────────────────────────────
+        case 'yx': case 'soe':
+            (frame.data||[]).forEach(item => {
+                const name = ptName('yx', item.addrDec??item.addr);
+                yxRows.push(`<tr class="${rowCls}">
+                    <td>${yxIdx++}</td><td>${pb}</td>
+                    <td>${item.addrDec??item.addr??''}</td><td class="mono">${addrHex(item.addr,proto)}</td>
+                    ${nameCell(name)}
+                    <td>${esc(item.state)}</td>
+                    <td>${esc(item.time||'')}</td>
+                </tr>`);
+            });
+            break;
+
+        // ── 遥控 ───────────────────────────────────────────────────
+        case 'control':
+            (frame.data||[]).forEach(item => {
+                // 遥控地址parser返回"0x..."字符串，需转数字后查表
+                const addrDec = parseInt(String(item.addr).replace(/^0x/i,''), 16);
+                const name    = ptName('yk', addrDec);
+                const opCls   = opClass(item.operation);
+                const resCls  = item.return==='success'?'result-ok':item.return==='failed'?'result-fail':'';
+                ctrlRows.push(`<tr class="${rowCls}">
+                    <td>${ctrlIdx++}</td><td>${pb}</td>
+                    <td class="mono">${esc(item.addr)}</td>
+                    ${nameCell(name)}
+                    <td>${esc(item.state)}</td>
+                    <td class="${opCls}">${esc(item.operation)}${frame.pn?'<span class="pn-neg">[否定]</span>':''}</td>
+                    <td>${esc(item.qoc||'')}</td>
+                    <td>${esc(item.pointType)}</td>
+                    <td class="${resCls}">${esc(item.return)}</td>
+                </tr>`);
+            });
+            break;
+
+        // ── 定值读写 ──────────────────────────────────────────────
+        case 'param':
+            (frame.data||[]).forEach(p => {
+                const operation=p.operation||'?', area=p.sn!=null?p.sn:'';
+                let addr=p.addr||'', dt=p.tag||'', val=p.value, piStr='';
+                if(p.piFlags) piStr=`${p.piFlags.se} / ${p.piFlags.cont} / ${p.piFlags.cr}`;
+                else if(p.pi!=null) piStr=`0x${p.pi.toString(16).padStart(2,'0')}`;
+                if(p.values?.length)  val=p.values.map(v=>`${v.addr}=${v.value}`).join('; ');
+                if(p.addrs?.length)   addr=p.addrs.join(', ');
+                if(p.current!==undefined){ val=`当前:${p.current} 最小:${p.min} 最大:${p.max}`; addr=''; }
+                const displayVal=val==null?'':(typeof val==='object'?JSON.stringify(val):String(val));
+                // 参数地址 parser 返回 "0x..." 字符串
+                const addrNum = addr ? parseInt(String(addr).replace(/^0x/i,''),16) : NaN;
+                const name    = isNaN(addrNum)?'':ptName('para', addrNum);
+                let opCls='';
+                if(operation.includes('撤销'))opCls='op-cancel';
+                else if(operation.includes('预置'))opCls='op-select';
+                else if(operation.includes('确认'))opCls='op-exec';
+                else if(operation.includes('请求')||operation.includes('响应')||operation.includes('切换'))opCls='op-confirm';
+                paramRows.push(`<tr class="${rowCls}">
+                    <td>${pb}</td>
+                    <td class="${opCls}">${esc(operation)}</td>
+                    <td>${esc(area)}</td>
+                    <td class="mono">${esc(addr)}</td>
+                    ${nameCell(name)}
+                    <td>${esc(dt)}</td>
+                    <td>${esc(displayVal)}</td>
+                    <td><small>${esc(piStr)}</small></td>
+                </tr>`);
+            });
+            break;
+
+        // ── 电能量 ────────────────────────────────────────────────
+        case 'energy':
+            (frame.data||[]).forEach(item => {
+                const name = ptName('en', item.addr);
+                energyRows.push(`<tr class="${rowCls}">
+                    <td>${energyIdx++}</td><td>${pb}</td>
+                    <td>${item.addr??''}</td><td class="mono">${addrHex(item.addr,proto)}</td>
+                    ${nameCell(name)}
+                    <td>${typeof item.value==='number'?item.value.toFixed(3):esc(String(item.value??''))}</td>
+                    <td>${qdsStr(item.qds)}</td>
+                    <td>${esc(item.time||'')}</td>
+                </tr>`);
+            });
+            break;
+
+        // ── 故障事件 ─────────────────────────────────────────────
+        case 'fault': {
+            const bodyLines=[];
+            if((frame.yx||[]).length) {
+                bodyLines.push(`📍 遥信信息 (${frame.yx.length}条):`);
+                frame.yx.forEach((yx,i)=>{
+                    const _n_yx=ptName('yx', yx.point), ns=_n_yx?`  名称:${_n_yx}`:'';
+                    bodyLines.push(`  ${i+1}. 类型:${esc(yx.typeHex)}  点号(dec):${yx.point}${ns}  状态:${esc(yx.state)}(${esc(yx.stateHex)})  时标:${esc(yx.time)}`);
+                    yxRows.push(`<tr style="background:#fff7ed" class="${rowCls}">
+                        <td style="color:#ea580c;font-weight:600">故障↑${i+1}</td><td>${pb}</td>
+                        <td>${yx.point}</td><td class="mono">${addrHex(yx.point,proto)}</td>
+                        ${nameCell(_n_yx)}
+                        <td>${esc(yx.state)}</td><td>${esc(yx.time)}</td>
+                    </tr>`);
+                });
+            }
+            if((frame.yc||[]).length) {
+                bodyLines.push(`\n📊 遥测信息 (${frame.yc.length}条, 类型:${esc(frame.ycTypeHex)}):`);
+                frame.yc.forEach((yc,i)=>{
+                    const vd=yc.rawValue!==undefined?`${yc.value}(raw:${yc.rawValue})`:(typeof yc.value==='number'?yc.value.toFixed(4):yc.value);
+                    const _n_yc=ptName('yc',yc.addr), ns=_n_yc?`  名称:${_n_yc}`:'';
+                    bodyLines.push(`  ${i+1}. 地址:${esc(yc.hexAddr)}${ns}  值:${vd}  (${esc(yc.valueType)})`);
+                    ycRows.push(`<tr style="background:#fff7ed" class="${rowCls}">
+                        <td style="color:#ea580c;font-weight:600">故障↑${i+1}</td><td>${pb}</td>
+                        <td>${yc.addr}</td><td class="mono">${esc(yc.hexAddr)}</td>
+                        ${nameCell(_n_yc)}
+                        <td>${typeof yc.value==='number'?yc.value.toFixed(4):esc(String(yc.value??''))}</td>
+                        <td><span class="type-tag">${esc(yc.valueType)}</span></td><td>—</td>
+                    </tr>`);
+                });
+            }
+            if(frame.error) bodyLines.push(`\n⚠️ 解析错误: ${esc(frame.error)}`);
+            evNodes.push(`<div class="fault-card">
+                <div class="fault-head" onclick="toggleFault(this)">
+                    <span class="fault-title">🔥 故障事件 ${pb} &nbsp; COT=${frame.cot} &nbsp; 公共地址=${frame.addr} &nbsp; (遥信:${(frame.yx||[]).length}条 / 遥测:${(frame.yc||[]).length}条)</span>
+                    <span class="fault-chev">▾</span>
+                </div>
+                <div class="fault-body" style="max-height:1000px">
+                    <div class="fault-inner">${bodyLines.join('\n')||'（无详细信息）'}</div>
+                </div></div>`);
+            break;
+        }
+
+        // ── 总召唤 ────────────────────────────────────────────────
+        case 'total_call':
+            evNodes.push(`<div class="ev-item ev-total">
+                ${pb}<span class="ev-icon">📞</span>总召唤
+                &nbsp;命令=${esc(frame.command)}
+                ${frame.group!=null?'&nbsp;组='+esc(frame.group):''}
+                &nbsp;COT=${esc(frame.cotDesc||frame.cot)}
+                &nbsp;公共地址=${esc(frame.addr)}
+                ${frame.pn?'<span class="pn-neg">[否定]</span>':''}
+                ${frame.linkInfo?`&nbsp;<span class="ev-link">[链路地址:${frame.linkInfo.linkAddr} ${esc(frame.linkInfo.fcName||'')}]</span>`:''}
+            </div>`); break;
+
+        case 'clock_sync':
+            evNodes.push(`<div class="ev-item ev-clock">
+                ${pb}<span class="ev-icon">🕐</span>${esc(frame.desc||'时钟')}
+                &nbsp;公共地址=${esc(frame.addr)}
+                ${frame.time?'&nbsp;时间='+esc(frame.time):''}
+                ${frame.pn?'<span class="pn-neg">[否定]</span>':''}
+            </div>`); break;
+
+        case 'init_end':
+            evNodes.push(`<div class="ev-item ev-init">
+                ${pb}<span class="ev-icon">🔄</span>初始化结束
+                &nbsp;原因=${esc(frame.coiDesc||'')}
+                &nbsp;公共地址=${esc(frame.addr)}
+            </div>`); break;
+
+        case 'energy_call':
+            evNodes.push(`<div class="ev-item ev-energy">
+                ${pb}<span class="ev-icon">⚡</span>电能量召唤
+                &nbsp;${esc(frame.qccDesc||'')}
+                &nbsp;COT=${esc(frame.cotDesc||frame.cot)}
+                &nbsp;公共地址=${esc(frame.addr)}
+                ${frame.pn?'<span class="pn-neg">[否定]</span>':''}
+            </div>`); break;
+
+        case 'test_cmd':
+            evNodes.push(`<div class="ev-item ev-test">
+                ${pb}<span class="ev-icon">🧪</span>${esc(frame.desc||'测试命令')}
+                &nbsp;FBP=${esc(frame.fbpHex||'')}
+                ${frame.fbpValid?'<span style="color:#a3e635">✓ 55AA正确</span>':''}
+                &nbsp;公共地址=${esc(frame.addr)}
+                ${frame.pn?'<span class="pn-neg">[否定]</span>':''}
+            </div>`); break;
+
+        case 'reset_process':
+            evNodes.push(`<div class="ev-item ev-reset">
+                ${pb}<span class="ev-icon">🔃</span>${esc(frame.desc||'复位进程')}
+                &nbsp;${esc(frame.qrpDesc||'')}
+                &nbsp;公共地址=${esc(frame.addr)}
+                ${frame.pn?'<span class="pn-neg">[否定]</span>':''}
+            </div>`); break;
+
+        case 'file_service': {
+            const svcIcon={"F_AF_NA":"📢","F_SC_NA":"📥","F_DR_TA":"📂","F_FR_NA":"✅","F_SR_NA":"📑","F_SG_NA":"📦","F_LS_NA":"🏁"}[frame.service]??"📁";
+            const icon=frame.desc?.includes("确认")?"🤝":svcIcon;
+            const lines=[];
+            if(frame.nof!=null)  lines.push("文件类型: "+esc(frame.nofName)+" (NOF="+frame.nof+")");
+            if(frame.nos!=null)  lines.push("节: "+esc(frame.nosName)+" (NOS="+frame.nos+")");
+            if(frame.lof!=null)  lines.push("文件长度: "+frame.lof+" 字节");
+            if(frame.los!=null)  lines.push("节长度: "+frame.los+" 字节");
+            if(frame.scqDesc)    lines.push("操作类型: "+esc(frame.scqDesc));
+            if(frame.result)     lines.push("准备状态: "+esc(frame.result));
+            if(frame.lsqDesc)    lines.push("结束标志: "+esc(frame.lsqDesc));
+            if(frame.chsHex)     lines.push("校验和: "+esc(frame.chsHex));
+            if(frame.ackType)    lines.push("确认类型: "+esc(frame.ackType));
+            if(frame.dataLen!=null){ lines.push("段数据长度: "+frame.dataLen+" 字节"); if(frame.dataHex) lines.push("数据(HEX):\n"+esc(frame.dataHex)); }
+            if(frame.files?.length){ lines.push("\n文件列表 ("+frame.files.length+" 个):"); frame.files.forEach((f,i)=>{ var cat=f.fileCategory&&f.fileCategory!==f.name?" ["+esc(f.fileCategory)+"]":""; lines.push("  "+(i+1)+". "+esc(f.name)+cat+"  查询:"+esc(f.fileTypeName)+"  时间:"+esc(f.startTime)+" ~ "+esc(f.endTime)); }); }
+            if(frame.subTypeName) lines.push("查询类型: "+esc(frame.subTypeName));
+            if(frame.entries?.length){ lines.push("\n目录 ("+frame.entries.length+" 个文件):"); frame.entries.forEach((e,i)=>lines.push("  "+(i+1)+". "+esc(e.nofName)+" 大小:"+e.lof+"字节  修改:"+esc(e.lastModified)+"  状态:"+esc(e.status))); }
+            lines.push("公共地址: "+frame.addr+"  COT: "+esc(frame.cotDesc||frame.cot));
+            evNodes.push("<div class='fault-card'><div class='fault-head' onclick='toggleFault(this)'><span class='fault-title' style='color:#67e8f9'>"+pb+icon+" "+esc(frame.service||'FILE')+" &nbsp; "+esc(frame.desc)+"</span><span class='fault-chev'>&#9662;</span></div><div class='fault-body' style='max-height:1000px'><div class='fault-inner' style='color:#a5f3fc'>"+lines.join("\n")+"</div></div></div>");
+            break;
+        }
+
+        case 'other':
+            evNodes.push(`<div class="ev-item ev-unknown">${pb}<span class="ev-icon">🔄</span>控制帧/U帧 &nbsp;控制域=${esc(frame.ctrl||'')}</div>`); break;
+
+        case 'unknown':
+            evNodes.push(`<div class="ev-item ev-unknown">
+                ${pb}<span class="ev-icon">❓</span>未知 TI=${esc(frame.tiHex||frame.ti)}
+                &nbsp;COT=${esc(frame.cotDesc||frame.cot)}
+                &nbsp;公共地址=${esc(frame.addr)}
+            </div>`); break;
+
+        default:
+            evNodes.push(`<div class="ev-item ev-unknown">${pb}<span class="ev-icon">📄</span>${esc(JSON.stringify(frame))}</div>`);
+        }
+    }
+
+    // ── 写入 DOM ─────────────────────────────────────────────────
+    const E   = DB => PT.ok ? DB+1 : DB;   // 有点表时列数+1
+    const setBody = (id, rows, baseCols, empty) => {
+        document.getElementById(id).innerHTML = rows.join('') ||
+            `<tr><td colspan="${E(baseCols)}" class="placeholder">${empty}</td></tr>`;
+    };
+    setBody('ycBody',      ycRows,      7, '无遥测数据');
+    setBody('yxBody',      yxRows,      6, '无遥信/SOE数据');
+    setBody('energyBody',  energyRows,  7, '无电能量数据');
+    setBody('ctrlBody',    ctrlRows,    8, '无遥控报文');
+    setBody('paramBody',   paramRows,   7, '无定值操作');
+    setBody('link101Body', link101Rows, 9, '无101链路帧');
+
+    document.getElementById('eventLog').innerHTML =
+        evNodes.length ? evNodes.join('') : '<span class="log-empty">✨ 无其他事件</span>';
+
+    const counts = {
+        'sec-yc':ycRows.length,'sec-yx':yxRows.length,'sec-energy':energyRows.length,
+        'sec-ctrl':ctrlRows.length,'sec-param':paramRows.length,
+        'sec-link101':link101Rows.length,'sec-events':evNodes.length,
+    };
+    const badgeMap = {
+        'sec-yc':'badge-yc','sec-yx':'badge-yx','sec-energy':'badge-energy',
+        'sec-ctrl':'badge-ctrl','sec-param':'badge-param',
+        'sec-link101':'badge-link101','sec-events':'badge-events',
+    };
+    Object.entries(counts).forEach(([sid,cnt])=>{ setBadge(badgeMap[sid],cnt); cnt>0?openSec(sid):closeSec(sid); });
+    requestAnimationFrame(()=>{
+        document.querySelectorAll('.cs:not(.collapsed) .cs-body').forEach(b=>{ b.style.maxHeight=b.scrollHeight+'px'; });
+    });
+}
+
+// ── 主题切换 ──
+function initializeTheme() {
+    const html = document.documentElement;
+    const savedTheme = localStorage.getItem('theme');
+    
+    // 确定主题：优先级：保存的 > 系统偏好 > light
+    let theme = savedTheme;
+    if (!theme) {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        theme = prefersDark ? 'dark' : 'light';
+    }
+    
+    applyTheme(theme);
+    const btn = document.getElementById('themeToggle');
+    if (btn) {
+        btn.addEventListener('click', (e) => { e.preventDefault(); toggleTheme(); });
+    }
+    updateThemeButton();
+    
+    // 监听系统主题变化
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+        if (!localStorage.getItem('theme')) {
+            applyTheme(e.matches ? 'dark' : 'light');
+        }
+    });
+}
+
+function applyTheme(theme) {
+    const html = document.documentElement;
+    if (theme === 'dark') {
+        html.classList.add('dark-theme');
+        html.classList.remove('light-theme');
+    } else {
+        html.classList.add('light-theme');
+        html.classList.remove('dark-theme');
+    }
+}
+
+function toggleTheme() {
+    const html = document.documentElement;
+    const isDark = html.classList.contains('dark-theme');
+    const newTheme = isDark ? 'light' : 'dark';
+    
+    localStorage.setItem('theme', newTheme);
+    applyTheme(newTheme);
+    updateThemeButton();
+}
+
+
+function updateThemeButton() {
+    const btn = document.getElementById('themeToggle');
+    if (!btn) return;
+    const isDark = document.documentElement.classList.contains('dark-theme');
+    btn.innerHTML = isDark ? '☀️ 亮色' : '🌙 暗色';
+}
+
+// 页面加载时初始化主题
+document.addEventListener('DOMContentLoaded', initializeTheme);
+if (document.readyState !== 'loading') {
+    initializeTheme();
+}
+</script>
+</body>
+</html>

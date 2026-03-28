@@ -1,0 +1,14 @@
+node_modules
+package-lock.json
+*.tar.gz
+setENV.bat
+*.bat
+*.ps1
+.env
+*/db/
+*.db
+*test*
+*.test.*
+dist/
+yarn.lock
+yarn-error.log
