@@ -5,3 +5,7 @@ setENV.bat
 *.bat
 *.ps1
 .env
+*/db/
+*.db
+*test*
+*.test.*

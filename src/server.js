@@ -9,7 +9,7 @@ const Parser101   = require('./101ParserClass');
 const { detectProtocol } = require('./protocolDetector');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 const parser104 = new Parser104();
@@ -41,6 +41,66 @@ app.post('/parse', (req, res) => {
         }
     }
     res.json(results);
+});
+
+// ── /parseLog ─────────────────────────────────────────────────────────────────
+// 解析整段 log 文件，逐行保留原始调试前缀，识别 hex 帧并解析
+// Body: { logText: string, protocol?: '101'|'104'|'auto' }
+// Response: { lines: [ { raw, prefix, protocol, frames: [...] } ] }
+// ──────────────────────────────────────────────────────────────────────────────
+app.post('/parseLog', express.json({ limit: '100mb' }), (req, res) => {
+    const { logText, forceProtocol } = req.body;
+    if (typeof logText !== 'string') return res.status(400).json({ error: 'logText required' });
+
+    // Regex to extract hex data from log lines like:
+    //  [xxx][yyy]:timestamp: file:... Tx(N) --->  68 15 ...
+    //  [xxx][yyy]:timestamp: file:... Rx(N) <---   68 77 ...
+    //  [xxx][yyy]:timestamp:!!!ScanLen[N]
+    const LOG_LINE_RE = /^(.+?(?:Tx\(\d+\)\s*-+>|Rx\(\d+\)\s*<-+))\s+((?:[0-9A-Fa-f]{2}\s*)+)$/;
+    const lines = logText.split(/\r?\n/);
+    const result = [];
+
+    for (const rawLine of lines) {
+        const trimmed = rawLine.trim();
+        if (!trimmed) { result.push({ raw: rawLine, type: 'empty' }); continue; }
+
+        const m = LOG_LINE_RE.exec(trimmed);
+        if (!m) {
+            // Non-hex line – pass through as debug info
+            result.push({ raw: rawLine, type: 'debug' });
+            continue;
+        }
+
+        const prefix = m[1];
+        const hexStr = m[2].trim();
+
+        // Determine direction (Tx/Rx already in prefix) 
+        let detectedProto, hexData;
+        if (forceProtocol && forceProtocol !== 'auto') {
+            detectedProto = forceProtocol;
+            hexData = hexStr;
+        } else {
+            const det = detectProtocol(hexStr);
+            detectedProto = det.protocol;
+            hexData = det.hexData;
+        }
+
+        let frames = [];
+        try {
+            if (detectedProto === '101') {
+                frames = parser101.parse(hexData);
+            } else {
+                frames = parser104.parse(hexData);
+                frames.forEach(p => { if (p && typeof p === 'object') p.protocol = '104'; });
+            }
+        } catch (e) {
+            frames = [{ type: 'error', error: e.message, protocol: detectedProto }];
+        }
+
+        result.push({ raw: rawLine, type: 'hex', prefix, hexStr, protocol: detectedProto, frames });
+    }
+
+    res.json({ lines: result });
 });
 
 const PORT = process.env.PORT || 33104;

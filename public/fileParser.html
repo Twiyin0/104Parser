@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log文件解析器 · IEC 104/101</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f1f5f9;margin:0;padding:20px;min-height:100vh}
+.container{max-width:1700px;margin:0 auto;background:white;border-radius:20px;box-shadow:0 20px 40px -8px rgba(0,0,0,.12);padding:28px}
+
+/* header */
+h1{font-size:1.8rem;font-weight:700;margin:0 0 6px;color:#0f172a;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h1 .badge{background:#2563eb;color:white;font-size:.75rem;padding:3px 12px;border-radius:30px;font-weight:400}
+h1 .badge-101{background:#0891b2}
+h1 .badge-log{background:#7c3aed}
+.nav-link{font-size:.85rem;color:#2563eb;text-decoration:none;padding:5px 14px;border:1.5px solid #bfdbfe;border-radius:20px;transition:background .15s}
+.nav-link:hover{background:#eff6ff}
+.sub{color:#475569;margin-bottom:12px;border-left:4px solid #7c3aed;padding:6px 12px;background:#f5f3ff;border-radius:0 8px 8px 0;font-size:.9rem;line-height:1.6}
+
+/* DB bar */
+.db-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding:8px 12px;border:1.5px dashed #cbd5e1;border-radius:12px;background:#f8fafc;transition:border-color .2s,background .2s}
+.db-bar.ok{border-style:solid;border-color:#4ade80;background:#f0fdf4}
+.db-bar.err{border-color:#f87171;background:#fef2f2}
+.db-label{font-size:.85rem;color:#64748b;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.db-pill{font-size:.78rem;font-weight:600;padding:2px 10px;border-radius:20px;white-space:nowrap}
+.db-pill.ok{background:#dcfce7;color:#16a34a}
+.db-pill.none{background:#f1f5f9;color:#94a3b8}
+.db-pill.err{background:#fee2e2;color:#dc2626}
+.db-pill.loading{background:#fef3c7;color:#d97706}
+.db-file-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:30px;font-size:.83rem;font-weight:500;cursor:pointer;border:1.5px solid #cbd5e1;background:white;color:#334155;transition:background .15s}
+.db-file-btn:hover{background:#f1f5f9}
+.db-detail{font-size:.75rem;color:#64748b;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.db-clear{display:none;align-items:center;gap:4px;padding:4px 11px;border-radius:30px;font-size:.78rem;cursor:pointer;border:1.5px solid #fca5a5;background:#fff5f5;color:#ef4444}
+.db-bar.ok .db-clear{display:inline-flex}
+.db-bar.ok .db-file-btn{display:none}
+.table-sel-wrap{display:none;align-items:center;gap:6px;border-left:1.5px solid #bbf7d0;padding-left:10px}
+.db-bar.ok .table-sel-wrap{display:flex}
+.table-sel-label{font-size:.8rem;color:#166534;white-space:nowrap;font-weight:500}
+#tableSelect{padding:4px 10px;border-radius:8px;font-size:.82rem;border:1.5px solid #86efac;background:white;color:#14532d;cursor:pointer;outline:none}
+
+/* controls */
+.ctrl-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:5px}
+.log-drop-zone{border:2px dashed #cbd5e1;border-radius:12px;padding:16px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;background:#f8fafc;flex:1;min-width:260px}
+.log-drop-zone.drag{border-color:#2563eb;background:#eff6ff}
+.log-drop-zone.has-file{border-color:#4ade80;background:#f0fdf4}
+.log-drop-icon{font-size:2rem;margin-bottom:6px}
+.log-drop-label{font-size:.9rem;color:#475569}
+.log-drop-name{font-size:.82rem;color:#16a34a;font-weight:600;margin-top:4px}
+#logFileInput{display:none}
+.proto-sel-box{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:12px;background:#f8fafc;min-width:200px}
+.proto-sel-title{font-size:.8rem;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.4px}
+.radio-group{display:flex;flex-direction:column;gap:4px}
+.radio-group label{display:flex;align-items:center;gap:6px;font-size:.85rem;color:#334155;cursor:pointer}
+.radio-group input{cursor:pointer;accent-color:#2563eb}
+
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 20px;border-radius:40px;font-size:.95rem;font-weight:500;cursor:pointer;border:1.5px solid transparent;transition:background .15s,transform .1s}
+.btn:hover{transform:translateY(-1px)}
+.btn-primary{background:#7c3aed;color:white;border-color:#7c3aed;box-shadow:0 4px 8px -2px rgba(124,58,237,.3)}
+.btn-primary:hover{background:#6d28d9}
+.btn-ghost{background:white;color:#334155;border-color:#cbd5e1}
+.btn-ghost:hover{background:#f1f5f9}
+.btn-green{background:#059669;color:white;border-color:#059669;box-shadow:0 4px 8px -2px rgba(5,150,105,.25)}
+.btn-green:hover{background:#047857}
+.btn-group{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+/* stats bar */
+.stats-bar{display:none;flex-wrap:wrap;gap:8px;margin-bottom:10px;padding:8px 12px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px}
+.stats-bar.visible{display:flex}
+.stat-pill{font-size:.78rem;font-weight:600;padding:3px 10px;border-radius:20px;background:#e0e7ff;color:#3730a3}
+.stat-pill.yc{background:#fce7f3;color:#9d174d}
+.stat-pill.yx{background:#d1fae5;color:#065f46}
+.stat-pill.ctrl{background:#fef3c7;color:#92400e}
+.stat-pill.fault{background:#fee2e2;color:#991b1b}
+.stat-pill.energy{background:#ede9fe;color:#4c1d95}
+.stat-pill.lines{background:#e0f2fe;color:#0369a1}
+.stat-pill.proto104{background:#dbeafe;color:#1d4ed8}
+.stat-pill.proto101{background:#cffafe;color:#0e7490}
+
+/* output */
+.output{margin-top:4px}
+.line-block{margin-bottom:2px}
+.debug-line{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:#64748b;padding:3px 10px;background:#f8fafc;border-left:3px solid #cbd5e1;white-space:pre-wrap;word-break:break-all}
+.hex-block{border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:6px}
+.hex-header{display:flex;align-items:center;gap:8px;padding:8px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;cursor:pointer;user-select:none;transition:background .15s}
+.hex-header:hover{background:#f1f5f9}
+.hex-raw{font-family:'JetBrains Mono',monospace;font-size:.74rem;color:#334155;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hex-chevron{font-size:.8rem;color:#94a3b8;transition:transform .2s;flex-shrink:0}
+.hex-block.collapsed .hex-chevron{transform:rotate(-90deg)}
+.hex-body{overflow:hidden;transition:max-height .25s ease}
+.hex-block.collapsed .hex-body{max-height:0!important}
+.frames-wrap{padding:8px 12px;background:#fff}
+
+/* proto badges */
+.proto-104{display:inline-block;font-size:.68rem;font-weight:700;background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:4px;margin-right:4px;vertical-align:middle;white-space:nowrap}
+.proto-101{display:inline-block;font-size:.68rem;font-weight:700;background:#cffafe;color:#0e7490;padding:1px 7px;border-radius:4px;margin-right:4px;vertical-align:middle;white-space:nowrap}
+
+/* frame cards */
+.frame-card{border-radius:8px;overflow:hidden;margin-bottom:6px;border:1px solid #e2e8f0}
+.frame-card-head{display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:#f1f5f9;cursor:pointer;user-select:none;font-size:.82rem;font-weight:600;color:#334155}
+.frame-card-head:hover{background:#e2e8f0}
+.frame-card.collapsed .hex-chevron{transform:rotate(-90deg)}
+.frame-card-body{overflow:hidden;transition:max-height .2s ease}
+.frame-card.collapsed .frame-card-body{max-height:0!important}
+.frame-table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.83rem}
+th{background:#f8fafc;color:#475569;font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.3px;padding:8px 10px;border-bottom:1.5px solid #e2e8f0;white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid #f1f5f9;color:#1e293b}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafbff}
+.mono{font-family:'JetBrains Mono',monospace;background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:.79rem}
+.pname{color:#065f46;font-weight:600;font-size:.8rem}
+.pname-none{color:#cbd5e1;font-size:.75rem}
+
+/* type colors */
+.tag-yc{background:#fce7f3;color:#9d174d;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block}
+.tag-yx{background:#d1fae5;color:#065f46;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block}
+.tag-ctrl{background:#fef3c7;color:#92400e;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block}
+.tag-fault{background:#fee2e2;color:#991b1b;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block}
+.tag-energy{background:#ede9fe;color:#4c1d95;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block}
+.tag-clock{background:#fef3c7;color:#92400e;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block}
+.tag-total{background:#e0f2fe;color:#0369a1;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block}
+.tag-link{background:#f3f4f6;color:#374151;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block}
+.tag-test{background:#ecfdf5;color:#065f46;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block}
+.tag-other{background:#f3f4f6;color:#4b5563;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block}
+
+/* dir badge */
+.dir-tx{background:#bfdbfe;color:#1e40af;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block}
+.dir-rx{background:#bbf7d0;color:#14532d;font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block}
+
+.empty-hint{text-align:center;color:#94a3b8;font-style:italic;padding:40px 0;font-size:.9rem}
+.error-msg{background:#fee2e2;color:#b91c1c;padding:8px 12px;border-radius:10px;margin-bottom:10px;border:1px solid #fecaca;font-size:.85rem}
+.col-name{display:none}
+body.has-db .col-name{display:table-cell}
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+<div class="container">
+  <h1>📄 Log 文件解析器 <span class="badge">104</span><span class="badge badge-101">101</span><span class="badge badge-log">LOG</span>
+    <a href="/" class="nav-link" style="font-size:.82rem;font-weight:400">← 返回实时解析</a>
+  </h1>
+  <div class="sub">
+    上传 log 文件后自动逐行解析，保留原始调试信息，识别 <code>Tx/Rx</code> 帧并解析 101/104 协议内容。
+    可加载点表 db 文件查看点名。支持网页展示或下载解析后的 log 文件。
+  </div>
+
+  <!-- DB Bar -->
+  <div class="db-bar" id="dbBar">
+    <span class="db-label">🗃️ 点表 DB</span>
+    <span class="db-pill none" id="dbPill">未加载</span>
+    <label class="db-file-btn" for="dbFileInput">📂 选择点表文件</label>
+    <input type="file" id="dbFileInput" accept=".db,.json,.sqlite,.sqlite3" style="display:none">
+    <span class="db-detail" id="dbDetail"></span>
+    <div class="table-sel-wrap" id="tableSelWrap">
+      <span class="table-sel-label">转发表：</span>
+      <select id="tableSelect"><option value="">全点表（101默认）</option></select>
+    </div>
+    <button class="db-clear" id="dbClear" onclick="clearDB()">✕ 清除</button>
+  </div>
+
+  <!-- Log File -->
+  <div class="ctrl-row">
+    <div class="log-drop-zone" id="dropZone" onclick="document.getElementById('logFileInput').click()">
+      <div class="log-drop-icon" id="dropIcon">📄</div>
+      <div class="log-drop-label" id="dropLabel">点击选择 log 文件，或拖拽到此处</div>
+      <div class="log-drop-name" id="dropName"></div>
+      <input type="file" id="logFileInput" accept=".log,.txt">
+    </div>
+
+    <div class="proto-sel-box">
+      <div class="proto-sel-title">协议强制模式</div>
+      <div class="radio-group">
+        <label><input type="radio" name="proto" value="auto" checked> 🔍 自动识别（推荐）</label>
+        <label><input type="radio" name="proto" value="104"> <span class="proto-104">104</span> 强制 IEC 104</label>
+        <label><input type="radio" name="proto" value="101"> <span class="proto-101">101</span> 强制 IEC 101</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log Text Input -->
+  <div class="ctrl-row" style="min-height:40vh;flex:1;margin-bottom:6px;">
+    <div class="log-input-box" style="flex:1;display:flex;flex-direction:column;gap:6px;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:12px;background:#f8fafc;">
+      <div style="font-size:.8rem;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.4px">输入 log 文本解析</div>
+      <textarea id="logInput" placeholder="粘贴一小段 log 文本进行解析（可选，优先于文件）" style="width:100%;flex:1;min-height:300px;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-family:monospace;font-size:.8rem;resize:vertical;outline:none;" oninput="checkParseEnable()"></textarea>
+    </div>
+  </div>
+
+  <!-- Buttons -->
+  <div class="btn-group">
+    <button class="btn btn-primary" id="parseBtn" onclick="parseLog()" disabled>▶ 解析 Log</button>
+    <button class="btn btn-green" id="downloadBtn" onclick="downloadLog()" disabled>⬇ 下载解析结果</button>
+    <button class="btn btn-ghost" onclick="clearAll()">🗑 清空</button>
+    <span id="parseStatus" style="font-size:.82rem;color:#64748b"></span>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar" id="statsBar"></div>
+
+  <!-- Error -->
+  <div class="error-msg" id="errorBox" style="display:none"></div>
+
+  <!-- Output -->
+  <div class="output" id="output">
+    <div class="empty-hint">上传 log 文件后点击「解析 Log」按钮开始</div>
+  </div>
+</div>
+
+<script>
+// ─── SQL.js 初始化 ─────────────────────────────────────────
+let SQL = null;
+let sqlReady = false;
+let sqlLoadPromise = null;
+let sqlRetries = 0;
+const MAX_RETRIES = 3;
+
+// 初始化 sql.js
+function initSQL() {
+  if (sqlReady && SQL) {
+    return Promise.resolve(SQL);
+  }
+  
+  if (sqlLoadPromise) {
+    return sqlLoadPromise; // 返回已存在的承诺，避免重复加载
+  }
+  
+  sqlLoadPromise = new Promise((resolve, reject) => {
+    if (typeof initSqlJs === 'undefined') {
+      // sql.js 脚本可能还没加载，等待一下再试
+      console.log('⏳ 等待 initSqlJs 全局变量可用...');
+      setTimeout(() => {
+        if (typeof initSqlJs === 'undefined') {
+          reject(new Error('initSqlJs 未定义 - sql.js 库加载失败'));
+        } else {
+          // 重新开始
+          sqlLoadPromise = null;
+          initSQL().then(resolve).catch(reject);
+        }
+      }, 500);
+      return;
+    }
+    
+    console.log(`⏳ sql.js 库加载中... (${sqlRetries + 1}/${MAX_RETRIES})`);
+    
+    initSqlJs({
+      locateFile: (file) => {
+        const url = `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${file}`;
+        console.log(`📦 加载资源: ${file}`);
+        return url;
+      }
+    })
+    .then(sql => {
+      SQL = sql;
+      sqlReady = true;
+      sqlRetries = 0;
+      console.log('✅ sql.js 库加载成功');
+      resolve(sql);
+    })
+    .catch(err => {
+      sqlLoadPromise = null; // 重置，以便重试
+      console.warn(`❌ sql.js 加载失败 (第 ${sqlRetries + 1} 次): ${err.message}`);
+      
+      if (sqlRetries < MAX_RETRIES) {
+        sqlRetries++;
+        console.log(`⏳ 3秒后重试... (${sqlRetries}/${MAX_RETRIES})`);
+        setTimeout(() => {
+          initSQL().then(resolve).catch(reject);
+        }, 3000);
+      } else {
+        reject(new Error(`sql.js 加载失败，已重试 ${MAX_RETRIES} 次：${err.message}`));
+      }
+    });
+  });
+  
+  return sqlLoadPromise;
+}
+
+// 启动初始化（页面加载时）
+console.log('🚀 页面加载完毕，启动 sql.js 初始化...');
+initSQL().catch(e => {
+  console.warn('⚠️ 后台加载失败: ' + e.message + ' - 将在首次使用数据库时重试');
+});
+
+// ─── State ─────────────────────────────────────────────────
+let logText = '';
+let logFileName = '';
+let dbData = null;       // {yc:{addr:name}, yx:{}, yk:{}, en:{}, para:{}}
+let parseResult = null;  // server response
+
+const PT = {
+  switchYXPoint : new Map(),
+  switchYCPoint : new Map(),
+  switchYKPoint : new Map(),
+  switchENPoint : new Map(),
+  maps : { para: new Map() },
+  raw : { yc:[], yx:[], yk:[], en:[], para:[] },
+  rawByTable: {},
+  dbTables: [],
+  tableNames : [],
+  curTable : null,
+  ok : false
+};
+
+function rebuildPointMaps(tableName) {
+  PT.curTable = tableName;
+  const isTransfer = (tableName && tableName !== '全点表');
+
+  const normalizeName = name => name == null ? '' : String(name).trim();
+
+  const buildMap = (rows, byTransfer = false) => {
+    const m = new Map();
+    for (const r of rows) {
+      if (!r) continue;
+      const rowTable = normalizeName(r.TableName);
+      if (tableName && tableName !== '' && tableName !== '全点表' && tableName !== rowTable) {
+        if (!PT.dbTables.includes(tableName)) continue;
+      }
+
+      let key, name;
+      if (byTransfer || (isTransfer && rowTable)) {
+        key = r.SwitchPoint != null ? Number(r.SwitchPoint) : null;
+        name = normalizeName(r.SwitchName || r.SwitchName || r.name || r.Name);
+      } else {
+        key = r.Addr != null ? Number(r.Addr) : (r.addr != null ? Number(r.addr) : null);
+        name = normalizeName(r.Name || r.name || r.SwitchName);
+      }
+
+      if (key != null && !Number.isNaN(key) && name) {
+        m.set(String(key), name);
+      }
+    }
+    return m;
+  };
+
+  // 对于 db 表名作为选择项（如 yc/yx/入网检），优先按原表数据生成映射。
+  if (tableName && PT.dbTables.includes(tableName) && PT.rawByTable[tableName]) {
+    const rows = PT.rawByTable[tableName];
+
+    const lowerName = String(tableName).toLowerCase();
+    let useType = null;
+    if (['yc','yx','yk','en','para'].includes(lowerName)) useType = lowerName;
+    // support Chinese label as yx类型转发表
+    if (!useType && /入网检|遥信|遥测|遥控|电能|定值/.test(tableName)) {
+      useType = tableName === '遥测' ? 'yc' : tableName === '遥控' ? 'yk' : tableName === '电能' ? 'en' : tableName === '定值' ? 'para' : 'yx';
+    }
+
+    PT.switchYXPoint = new Map();
+    PT.switchYCPoint = new Map();
+    PT.switchYKPoint = new Map();
+    PT.switchENPoint = new Map();
+
+    if (useType) {
+      const m = buildMap(rows, useType === 'yx');
+      if (useType === 'yx') PT.switchYXPoint = m;
+      if (useType === 'yc') PT.switchYCPoint = m;
+      if (useType === 'yk') PT.switchYKPoint = m;
+      if (useType === 'en') PT.switchENPoint = m;
+    } else {
+      // 默认当作转发表（yx）
+      PT.switchYXPoint = buildMap(rows, true);
+    }
+
+    PT.maps.para = new Map();
+    for (const r of PT.raw.para) {
+      if (!r || r.UpAddr == null) continue;
+      PT.maps.para.set(String(Number(r.UpAddr)), normalizeName(r.Name));
+    }
+
+    PT.ok = true;
+    return;
+  }
+
+  PT.switchYXPoint = buildMap(PT.raw.yx, isTransfer);
+  PT.switchYCPoint = buildMap(PT.raw.yc, isTransfer);
+  PT.switchYKPoint = buildMap(PT.raw.yk, isTransfer);
+  PT.switchENPoint = buildMap(PT.raw.en, isTransfer);
+
+  PT.maps.para = new Map();
+  for (const r of PT.raw.para) {
+    if (!r || r.UpAddr == null) continue;
+    PT.maps.para.set(String(Number(r.UpAddr)), normalizeName(r.Name));
+  }
+
+  PT.ok = true;
+}
+
+function getTableNamesFromPT() {
+  const names = new Set();
+  for (const type of ['yc', 'yx', 'yk', 'en', 'para']) {
+    for (const r of PT.raw[type]) {
+      const tn = r.TableName ? String(r.TableName).trim() : '';
+      if (tn) names.add(tn);
+    }
+  }
+
+  // 兼容无 TableName，直接用 DB 表名（如 sample.db 的 yc/yx/yk）
+  if (names.size === 0 && PT.dbTables.length > 0) {
+    PT.dbTables.forEach(t => {
+      if (t && !t.startsWith('sqlite_')) names.add(t);
+    });
+  }
+
+  return Array.from(names).sort((a,b) => String(a).localeCompare(b, 'zh'));
+}
+
+// ─── DB Loading ────────────────────────────────────────────
+document.getElementById('dbFileInput').addEventListener('change', e => {
+  const f = e.target.files[0]; 
+  if (!f) return;
+  console.log('📂 选择文件:', f.name, '大小:', f.size, 'bytes');
+  loadDB(f);
+});
+
+function loadDB(file) {
+  const bar = document.getElementById('dbBar');
+  const pill = document.getElementById('dbPill');
+  const detail = document.getElementById('dbDetail');
+  
+  const ext = file.name.toLowerCase().split('.').pop();
+  console.log('🔄 开始加载文件:', file.name, '大小:', file.size, 'bytes');
+  
+  // 对于 SQLite 文件，先显示加载提示
+  if (ext === 'db' || ext === 'sqlite' || ext === 'sqlite3') {
+    pill.className = 'db-pill loading'; 
+    pill.textContent = '初始化...';
+    detail.textContent = '正在加载 sql.js 库...';
+    bar.className = 'db-bar loading';
+  } else {
+    pill.className = 'db-pill loading'; 
+    pill.textContent = '加载中...';
+    bar.className = 'db-bar loading';
+  }
+
+  const reader = new FileReader();
+  
+  reader.onerror = (e) => {
+    console.error('❌ 文件读取错误:', e);
+    pill.className = 'db-pill err'; pill.textContent = '读取失败';
+    bar.className = 'db-bar err';
+    detail.textContent = '无法读取文件：' + (e?.message || e);
+  };
+  
+  reader.onload = async (ev) => {
+    try {
+      // Handle SQLite binary file
+      if (ext === 'db' || ext === 'sqlite' || ext === 'sqlite3') {
+        console.log('📦 检测到 SQLite 文件');
+        
+        // 等待 sql.js 就绪
+        pill.textContent = '正在加载 sql.js...';
+        detail.textContent = '此过程需要几秒钟，请稍候...';
+        
+        let sql;
+        try {
+          sql = await initSQL();
+          pill.textContent = '解析中...';
+          detail.textContent = '正在解析数据库结构...';
+        } catch (sqlErr) {
+          throw new Error('sql.js 库加载失败：' + sqlErr.message + '\n\n如果问题持续，请检查网络连接或刷新页面。');
+        }
+        
+        try {
+          console.log('✓ sql.js 已就绪，开始解析数据库...');
+          const data = new Uint8Array(ev.target.result);
+          const db = new sql.Database(data);
+          
+          // 通用读表函数（参考 index.html）
+          const readTable = (sql) => {
+            try {
+              const stmt = db.prepare(sql);
+              const rows = [];
+              while (stmt.step()) {
+                rows.push(stmt.getAsObject());
+              }
+              stmt.free();
+              return rows;
+            } catch(e) {
+              console.warn('执行 SQL 失败:', sql, e.message);
+              return [];
+            }
+          };
+          
+          // 逐表读取数据（兼容 tableName 字段以及单独表名如 yc/yx/yk）
+          console.log('📊 开始读取表数据...');
+          let dbData = { yc:{}, yx:{}, yk:{}, en:{}, para:{} };
+          PT.raw = { yc:[], yx:[], yk:[], en:[], para:[] };
+          PT.rawByTable = {};
+
+          // 获取所有表名
+          const allTables = readTable("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+          PT.dbTables = allTables.map(t => t.name);
+          console.log('找到表:', PT.dbTables.join(', '));
+
+          const tableTypeCandidates = {
+            yc: ['yc', 'projectycpoint', 'jfxxx_yc', 'resource_yc', '遥测'],
+            yx: ['yx', 'projectyxpoint', 'jfxxx_yx', 'resource_yx', '遥信', '入网检'],
+            yk: ['yk', 'projectykpoint', 'jfxxx_yk', 'resource_yk', '遥控'],
+            en: ['en', 'projectenergypoint', 'energy', '电能'],
+            para: ['para', 'projectparatransferpoint', 'parameter', '定值']
+          };
+
+          const normalizeTableName = (name) => String(name || '').trim().toLowerCase();
+          const guessType = (name, cols) => {
+            const n = normalizeTableName(name);
+            for (const [type, candidates] of Object.entries(tableTypeCandidates)) {
+              if (candidates.includes(n)) return type;
+            }
+            // 根据字段猜测
+            const lowerCols = cols.map(c=>c.name.toLowerCase());
+            if (lowerCols.includes('switchpoint') && lowerCols.includes('switchname')) return 'yx';
+            if (lowerCols.includes('addr') && lowerCols.includes('name')) {
+              if (n === '入网检' || n.includes('检')) return 'yx';
+              if (n === '遥测') return 'yc';
+              if (n === '遥控') return 'yk';
+              if (n === '电能') return 'en';
+              return 'yx';
+            }
+            return null;
+          };
+
+          for (const tableName of PT.dbTables) {
+            const cols = readTable(`PRAGMA table_info(\`${tableName}\`)`);
+            const rows = readTable(`SELECT * FROM \`${tableName}\``);
+            PT.rawByTable[tableName] = rows;
+
+            const type = guessType(tableName, cols);
+            if (type && Array.isArray(rows) && rows.length) {
+              PT.raw[type] = rows;
+
+              rows.forEach(row => {
+                const addr = row.addr != null ? String(row.addr) : (row.Addr != null ? String(row.Addr) : '');
+                const name = row.name || row.Name || row.SwitchName || row.name || '';
+                if (addr) {
+                  dbData[type][String(addr)] = String(name || addr);
+                }
+              });
+            }
+          }
+
+          db.close();
+          console.log('✅ 数据库读取完成');
+
+          // 初始化点表原始行（用于转发表选择）
+          // PT.raw 在上面已经填充；allRows已废弃
+          PT.tableNames = getTableNamesFromPT();
+          populateTableSelect(PT.tableNames);
+
+          const defaultName = PT.tableNames.includes('入网检') ? '入网检' : (PT.tableNames[0] || '');
+          if (defaultName) {
+            const sel = document.getElementById('tableSelect');
+            if (sel) sel.value = defaultName;
+            rebuildPointMaps(defaultName);
+          } else {
+            rebuildPointMaps('全点表');
+          }
+
+          // 仍保留快速查找映射（兼容旧行为）
+          dbData = normalizeDB(dbData);
+          onDBLoaded(file.name, dbData);
+          
+        } catch (sqlErr) {
+          throw new Error('数据库解析失败：' + (sqlErr?.message || sqlErr));
+        }
+        return;
+      }
+      
+      // Handle JSON file
+      console.log('📄 检测到 JSON 文件，大小:', ev.target.result.length);
+      const json = JSON.parse(ev.target.result);
+      console.log('✓ JSON 解析成功，格式检查...');
+      
+      if (json.tables || json.yc || json.yx) {
+        dbData = normalizeDB(json);
+        onDBLoaded(file.name, dbData);
+      } else {
+        throw new Error('未识别的格式，需要包含 yc、yx 或 tables 字段');
+      }
+    } catch(ex) {
+      console.error('❌ 加载失败:', ex.message);
+      pill.className = 'db-pill err'; pill.textContent = '格式错误';
+      bar.className = 'db-bar err';
+      detail.textContent = ex.message;
+    }
+  };
+  
+  // Read as appropriate format
+  if (ext === 'db' || ext === 'sqlite' || ext === 'sqlite3') {
+    reader.readAsArrayBuffer(file);
+  } else {
+    reader.readAsText(file, 'utf-8');
+  }
+}
+
+function normalizeDB(raw) {
+  // Support: {yc:{}, yx:{}, yk:{}, en:{}, para:{}} or {tables:{yc:[], ...}}
+  const out = { yc:{}, yx:{}, yk:{}, en:{}, para:{}, tableNames:[] };
+  if (raw.tables) {
+    // table-based: raw.tables = { "转发表1": { yc:[{addr,name}], yx:[], ... }, ... }
+    out.tableNames = Object.keys(raw.tables);
+    // populate tableSelect
+    populateTableSelect(out.tableNames);
+    // Default: flatten all
+    for (const tname of out.tableNames) {
+      const t = raw.tables[tname];
+      for (const type of ['yc','yx','yk','en','para']) {
+        if (Array.isArray(t[type])) {
+          t[type].forEach(({addr, name}) => { if (addr != null) out[type][addr] = name; });
+        } else if (t[type] && typeof t[type] === 'object') {
+          Object.assign(out[type], t[type]);
+        }
+      }
+    }
+    out._raw = raw;
+  } else {
+    // Flat: {yc:{addr:name}, ...} or {yc:[{addr,name}], ...}
+    for (const type of ['yc','yx','yk','en','para']) {
+      if (Array.isArray(raw[type])) {
+        raw[type].forEach(({addr, name}) => { if (addr != null) out[type][addr] = name; });
+      } else if (raw[type] && typeof raw[type] === 'object') {
+        Object.assign(out[type], raw[type]);
+      }
+    }
+  }
+  return out;
+}
+
+function populateTableSelect(names) {
+  const sel = document.getElementById('tableSelect');
+  sel.innerHTML = '<option value="">全点表（101默认）</option>';
+  names.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n; opt.textContent = n;
+    sel.appendChild(opt);
+  });
+
+  sel.onchange = () => {
+    const tname = sel.value;
+    const tableName = (tname === '__null__' || tname === '') ? null : tname;
+    rebuildPointMaps(tableName);
+    if (parseResult) renderResult(parseResult);
+  };
+}
+
+function applyTableSelect() {
+  const sel = document.getElementById('tableSelect');
+  if (!sel) return;
+
+  const tname = sel.value;
+  const tableName = (tname === '__null__' || tname === '') ? null : tname;
+  rebuildPointMaps(tableName);
+  if (parseResult) renderResult(parseResult);
+}
+document.getElementById('tableSelect').addEventListener('change', applyTableSelect);
+
+function onDBLoaded(name, db) {
+  // PT.ok 在 rebuildPointMaps 中控制，保持加载后状态不重置
+  const bar = document.getElementById('dbBar');
+  const pill = document.getElementById('dbPill');
+  const detail = document.getElementById('dbDetail');
+  const ycN = Object.keys(db.yc||{}).length;
+  const yxN = Object.keys(db.yx||{}).length;
+  const ykN = Object.keys(db.yk||{}).length;
+  const totalPoints = ycN+yxN+ykN;
+  console.log(`✅ 点表加载成功: yc=${ycN} yx=${yxN} yk=${ykN} 共=${totalPoints}`);
+  
+  // 设置全局 dbData
+  dbData = db;
+  
+  pill.className = 'db-pill ok';
+  pill.textContent = `已加载 ${totalPoints} 点`;
+  bar.className = 'db-bar ok';
+  detail.textContent = `${name}  遥测:${ycN} 遥信:${yxN} 遥控:${ykN}`;
+  document.body.classList.add('has-db');
+  const dbInput = document.getElementById('dbFileInput');
+  if (dbInput) dbInput.value = '';
+  if (parseResult) renderResult(parseResult);
+}
+
+function clearDB() {
+  dbData = null;
+  PT.ok = false;
+  PT.curTable = null;
+  PT.tableNames = [];
+  PT.raw = { yc:[], yx:[], yk:[], en:[], para:[] };
+  const bar = document.getElementById('dbBar');
+  const pill = document.getElementById('dbPill');
+  const detail = document.getElementById('dbDetail');
+  bar.className = 'db-bar';
+  pill.className = 'db-pill none'; pill.textContent = '未加载';
+  detail.textContent = '';
+  document.getElementById('tableSelect').innerHTML = '<option value="">全点表（101默认）</option>';
+  const dbInput2 = document.getElementById('dbFileInput');
+  if (dbInput2) dbInput2.value = '';
+  document.body.classList.remove('has-db');
+  if (parseResult) renderResult(parseResult);
+}
+
+// ─── Log File Loading ───────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+const logInput = document.getElementById('logFileInput');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag');
+  const f = e.dataTransfer.files[0]; if (f) loadLogFile(f);
+});
+logInput.addEventListener('change', e => { const f = e.target.files[0]; if (f) loadLogFile(f); });
+
+function loadLogFile(file) {
+  logFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    logText = ev.target.result;
+    dropZone.classList.add('has-file');
+    document.getElementById('dropIcon').textContent = '✅';
+    document.getElementById('dropLabel').textContent = '已加载文件';
+    document.getElementById('dropName').textContent = `${file.name}  (${(file.size/1024).toFixed(1)} KB)`;
+    document.getElementById('parseBtn').disabled = false;
+    checkParseEnable();
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function checkParseEnable() {
+  const inputText = document.getElementById('logInput').value.trim();
+  const hasFile = logText.length > 0;
+  document.getElementById('parseBtn').disabled = !(inputText || hasFile);
+}
+
+// ─── Parse ─────────────────────────────────────────────────
+async function parseLog() {
+  const inputText = document.getElementById('logInput').value.trim();
+  const useInput = inputText.length > 0;
+  const textToParse = useInput ? inputText : logText;
+  
+  if (!textToParse) return;
+  const btn = document.getElementById('parseBtn');
+  const status = document.getElementById('parseStatus');
+  btn.disabled = true; btn.textContent = '⏳ 解析中...';
+  status.textContent = '';
+  document.getElementById('errorBox').style.display = 'none';
+
+  const proto = document.querySelector('input[name="proto"]:checked').value;
+  try {
+    const resp = await fetch('/parseLog', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ logText: textToParse, forceProtocol: proto === 'auto' ? undefined : proto })
+    });
+    if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+    parseResult = await resp.json();
+    renderResult(parseResult);
+    document.getElementById('downloadBtn').disabled = false;
+    status.textContent = `✓ 解析完成 ${parseResult.lines.length} 行`;
+    
+    // 自适应设置默认表选择
+    setDefaultTableBasedOnProtocol(parseResult);
+  } catch(e) {
+    document.getElementById('errorBox').textContent = '解析失败：' + e.message;
+    document.getElementById('errorBox').style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = '▶ 解析 Log';
+  }
+}
+
+// ─── Render ─────────────────────────────────────────────────
+function ptName(type, addr) {
+  if (PT.ok) {
+    const n = Number(addr);
+    if (Number.isNaN(n)) return '';
+    const isTransfer = (PT.curTable !== null && PT.curTable !== '全点表');
+    switch (type) {
+      case 'yx':   return PT.switchYXPoint.get(String(isTransfer ? n : n)) || '';
+      case 'yc':   return PT.switchYCPoint.get(String(isTransfer ? n - 0x4000 : n)) || '';
+      case 'yk':   return PT.switchYKPoint.get(String(isTransfer ? n - 0x6000 : n)) || '';
+      case 'en':   return PT.switchENPoint.get(String(isTransfer ? n - 0x6400 : n)) || '';
+      case 'para': return PT.maps.para.get(String(n)) || '';
+      default: return '';
+    }
+  }
+
+  if (!dbData || addr == null) return '';
+
+  const map = dbData[type] || {};
+
+  // 🔥 统一转成十进制 number
+  let key = addr;
+
+  if (typeof addr === 'string') {
+    if (/^0x/i.test(addr)) {
+      key = parseInt(addr, 16);
+    } else {
+      key = parseInt(addr, 10);
+    }
+  }
+
+  // 再统一成字符串 key
+  key = String(key);
+
+  return map[key] || '';
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function addrHex(addr, proto) {
+  if (addr == null) return '';
+  const n = parseInt(addr, 10);
+  if (isNaN(n)) return esc(String(addr));
+  return proto === '101'
+    ? '0x' + n.toString(16).padStart(4,'0').toUpperCase()
+    : '0x' + n.toString(16).padStart(6,'0').toUpperCase();
+}
+
+function protoBadge(p) {
+  return p === '101'
+    ? '<span class="proto-101">101</span>'
+    : '<span class="proto-104">104</span>';
+}
+
+function dirBadge(prefix) {
+  if (!prefix) return '';
+  if (/Tx/i.test(prefix)) return '<span class="dir-tx">Tx</span>';
+  if (/Rx/i.test(prefix)) return '<span class="dir-rx">Rx</span>';
+  return '';
+}
+
+function typeTag(type) {
+  const map = {
+    yc:'遥测',yx:'遥信',soe:'SOE',control:'遥控',param:'定值',
+    energy:'电能',fault:'故障',clock:'对时',total_call:'总召',
+    link_frame:'链路帧',heartbeat:'心跳',init:'初始化',
+    file:'文件',reset:'复位',test:'测试'
+  };
+  const label = map[type] || type || '?';
+  const cls = {
+    yc:'yc',yx:'yx',soe:'yx',control:'ctrl',param:'ctrl',
+    energy:'energy',fault:'fault',clock:'clock',total_call:'total',
+    link_frame:'link',heartbeat:'test',init:'total',
+    file:'other',reset:'other',test:'test'
+  }[type] || 'other';
+  return `<span class="tag-${cls}">${esc(label)}</span>`;
+}
+
+function renderResult(result) {
+  const lines = result.lines || [];
+  const out = document.getElementById('output');
+
+  // stats
+  let nHex=0,nDbg=0,n104=0,n101=0,nYC=0,nYX=0,nCtrl=0,nFault=0,nEnergy=0;
+  lines.forEach(l => {
+    if (l.type === 'hex') {
+      nHex++;
+      if (l.protocol === '104') n104++; else n101++;
+      (l.frames||[]).forEach(f => {
+        if (f.type === 'yc') nYC += (f.data||[]).length;
+        if (f.type === 'yx' || f.type === 'soe') nYX += (f.data||[]).length;
+        if (f.type === 'control') nCtrl += (f.data||[]).length;
+        if (f.type === 'fault') nFault++;
+        if (f.type === 'energy') nEnergy += (f.data||[]).length;
+      });
+    } else if (l.type !== 'empty') nDbg++;
+  });
+
+  const statsBar = document.getElementById('statsBar');
+  statsBar.className = 'stats-bar visible';
+  statsBar.innerHTML = `
+    <span class="stat-pill lines">总行 ${lines.length}</span>
+    <span class="stat-pill proto104">帧 ${nHex} 条</span>
+    <span class="stat-pill proto104">104×${n104}</span>
+    <span class="stat-pill proto101">101×${n101}</span>
+    <span class="stat-pill yc">遥测 ${nYC}</span>
+    <span class="stat-pill yx">遥信 ${nYX}</span>
+    <span class="stat-pill ctrl">遥控 ${nCtrl}</span>
+    <span class="stat-pill fault">故障 ${nFault}</span>
+    <span class="stat-pill energy">电能 ${nEnergy}</span>
+  `;
+
+  const html = [];
+  lines.forEach((line, idx) => {
+    if (line.type === 'empty') return;
+    if (line.type === 'debug') {
+      html.push(`<div class="debug-line">${esc(line.raw)}</div>`);
+      return;
+    }
+    if (line.type === 'hex') {
+      const pb = protoBadge(line.protocol);
+      const db = dirBadge(line.prefix);
+      const framesSummary = summarizeFrames(line.frames||[]);
+      const id = `hb${idx}`;
+      html.push(`
+      <div class="hex-block" id="${id}">
+        <div class="hex-header" onclick="toggleBlock('${id}')">
+          ${db}${pb}
+          <span class="hex-raw">${esc(line.prefix||'')} <span style="color:#94a3b8">${esc(line.hexStr||'')}</span></span>
+          <span style="font-size:.78rem;color:#64748b;margin-left:8px;flex-shrink:0">${framesSummary}</span>
+          <span class="hex-chevron">▾</span>
+        </div>
+        <div class="hex-body" style="max-height:2000px">
+          <div class="frames-wrap">${renderFrames(line.frames||[], line.protocol)}</div>
+        </div>
+      </div>`);
+      return;
+    }
+  });
+
+  out.innerHTML = html.join('') || '<div class="empty-hint">无可显示内容</div>';
+}
+
+function summarizeFrames(frames) {
+  if (!frames.length) return '';
+  const types = frames.map(f => {
+    const t = f.type;
+    if (t === 'yc') return `遥测×${(f.data||[]).length}`;
+    if (t === 'yx' || t === 'soe') return `遥信×${(f.data||[]).length}`;
+    if (t === 'control') return `遥控×${(f.data||[]).length}`;
+    if (t === 'fault') return '故障事件';
+    if (t === 'energy') return `电能×${(f.data||[]).length}`;
+    if (t === 'total_call') return '总召';
+    if (t === 'clock') return '对时';
+    if (t === 'link_frame') return '链路帧';
+    if (t === 'heartbeat') return '心跳';
+    if (t === 'init') return '初始化';
+    if (t === 'error') return '⚠解析错误';
+    return t;
+  });
+  return types.join(' · ');
+}
+
+function renderFrames(frames, proto) {
+  if (!frames.length) return '<div style="font-size:.78rem;color:#94a3b8;padding:8px">（无可解析帧）</div>';
+  return frames.map((f, i) => renderFrame(f, i, proto)).join('');
+}
+
+function renderFrame(f, idx, proto) {
+  const cardId = `fc_${idx}_${Math.random().toString(36).slice(2,6)}`;
+  const pb = protoBadge(f.protocol || proto);
+  const tag = typeTag(f.type);
+  let body = '';
+
+  if (f.type === 'error') {
+    return `<div style="background:#fee2e2;color:#b91c1c;padding:6px 12px;border-radius:6px;font-size:.8rem;margin-bottom:4px">⚠ ${esc(f.error)}</div>`;
+  }
+
+  if (f.type === 'yc') {
+    body = renderYC(f, proto);
+  } else if (f.type === 'yx' || f.type === 'soe') {
+    body = renderYX(f, proto);
+  } else if (f.type === 'control') {
+    body = renderCtrl(f, proto);
+  } else if (f.type === 'fault') {
+    body = renderFault(f, proto);
+  } else if (f.type === 'energy') {
+    body = renderEnergy(f, proto);
+  } else if (f.type === 'link_frame') {
+    body = renderLinkFrame(f);
+  } else if (f.type === 'param') {
+    body = renderParam(f, proto);
+  } else {
+    // Generic: show JSON
+    body = `<div style="font-family:monospace;font-size:.75rem;color:#475569;padding:8px;background:#f8fafc;white-space:pre-wrap">${esc(JSON.stringify(f, null, 2))}</div>`;
+  }
+
+  const countStr = f.data ? ` <small style="color:#94a3b8;font-weight:400">(${f.data.length}条)</small>` : '';
+
+  return `
+  <div class="frame-card" id="${cardId}">
+    <div class="frame-card-head" onclick="toggleBlock('${cardId}')">
+      <span>${pb}${tag}${countStr}</span>
+      <span class="hex-chevron">▾</span>
+    </div>
+    <div class="frame-card-body" style="max-height:2000px">
+      <div class="frame-table-wrap">${body}</div>
+    </div>
+  </div>`;
+}
+
+// ── YC ──────────────────────────────────────────────────────
+function renderYC(f, proto) {
+  const rows = (f.data||[]).map((item, i) => {
+    const name = ptName('yc', item.addr);
+    return `<tr>
+      <td>${i+1}</td>
+      <td>${item.addr??''}</td>
+      <td class="mono">${addrHex(item.addr, proto)}</td>
+      <td class="col-name"><span class="${name?'pname':'pname-none'}">${esc(name)||'—'}</span></td>
+      <td>${esc(String(item.value??''))}</td>
+      <td>${esc(item.quality||item.qds||'')}</td>
+      <td>${esc(item.time||item.timestamp||'')}</td>
+    </tr>`;
+  }).join('');
+  return `<table><thead><tr>
+    <th>#</th><th>地址(dec)</th><th>地址(hex)</th>
+    <th class="col-name">点名</th>
+    <th>值</th><th>品质</th><th>时标</th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ── YX / SOE ─────────────────────────────────────────────────
+function renderYX(f, proto) {
+  const rows = (f.data||[]).map((item, i) => {
+    const addr = item.addrDec ?? item.addr;
+    const name = ptName('yx', addr);
+    return `<tr>
+      <td>${i+1}</td>
+      <td>${addr??''}</td>
+      <td class="mono">${addrHex(addr, proto)}</td>
+      <td class="col-name"><span class="${name?'pname':'pname-none'}">${esc(name)||'—'}</span></td>
+      <td>${esc(item.state??'')}</td>
+      <td>${esc(item.time||item.timestamp||'')}</td>
+    </tr>`;
+  }).join('');
+  return `<table><thead><tr>
+    <th>#</th><th>地址(dec)</th><th>地址(hex)</th>
+    <th class="col-name">点名</th>
+    <th>状态</th><th>时标</th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ── Fault ─────────────────────────────────────────────────────
+function renderFault(f, proto) {
+  let html = '';
+  if ((f.yx||[]).length) {
+    html += '<div style="font-weight:600;font-size:.8rem;color:#991b1b;padding:6px 10px;background:#fff1f1">📍 遥信</div>';
+    const rows = f.yx.map((item,i) => {
+      const name = ptName('yx', item.point);
+      return `<tr>
+        <td>${i+1}</td>
+        <td>${item.point??''}</td>
+        <td class="mono">${addrHex(item.point, proto)}</td>
+        <td class="col-name"><span class="${name?'pname':'pname-none'}">${esc(name)||'—'}</span></td>
+        <td>${esc(item.state??'')}</td>
+        <td>${esc(item.time||'')}</td>
+      </tr>`;
+    }).join('');
+    html += `<table><thead><tr><th>#</th><th>地址(dec)</th><th>地址(hex)</th><th class="col-name">点名</th><th>状态</th><th>时标</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  if ((f.yc||[]).length) {
+    html += '<div style="font-weight:600;font-size:.8rem;color:#9d174d;padding:6px 10px;background:#fff1f5">📊 遥测</div>';
+    const rows = f.yc.map((item,i) => {
+      const name = ptName('yc', item.addr||item.point);
+      return `<tr>
+        <td>${i+1}</td>
+        <td>${item.addr??item.point??''}</td>
+        <td class="mono">${addrHex(item.addr??item.point, proto)}</td>
+        <td class="col-name"><span class="${name?'pname':'pname-none'}">${esc(name)||'—'}</span></td>
+        <td>${esc(String(item.value??''))}</td>
+        <td>${esc(item.time||item.timestamp||'')}</td>
+      </tr>`;
+    }).join('');
+    html += `<table><thead><tr><th>#</th><th>地址(dec)</th><th>地址(hex)</th><th class="col-name">点名</th><th>值</th><th>时标</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  if (!html) html = `<div style="font-family:monospace;font-size:.75rem;color:#475569;padding:8px;background:#f8fafc;white-space:pre-wrap">${esc(JSON.stringify(f,null,2))}</div>`;
+  return html;
+}
+
+// ── Control ───────────────────────────────────────────────────
+function renderCtrl(f, proto) {
+  const rows = (f.data||[]).map((item,i) => {
+    const addrDec = parseInt(String(item.addr||'').replace(/^0x/i,''),16);
+    const name = ptName('yk', isNaN(addrDec)?item.addr:addrDec);
+    return `<tr>
+      <td>${i+1}</td>
+      <td class="mono">${esc(item.addr??'')}</td>
+      <td class="col-name"><span class="${name?'pname':'pname-none'}">${esc(name)||'—'}</span></td>
+      <td>${esc(item.state??'')}</td>
+      <td>${esc(item.operation??'')}</td>
+      <td>${esc(item.return??'')}</td>
+    </tr>`;
+  }).join('');
+  return `<table><thead><tr>
+    <th>#</th><th>地址</th>
+    <th class="col-name">点名</th>
+    <th>状态</th><th>操作</th><th>结果</th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ── Energy ────────────────────────────────────────────────────
+function renderEnergy(f, proto) {
+  const rows = (f.data||[]).map((item,i) => {
+    const name = ptName('en', item.addr);
+    return `<tr>
+      <td>${i+1}</td>
+      <td>${item.addr??''}</td>
+      <td class="mono">${addrHex(item.addr,proto)}</td>
+      <td class="col-name"><span class="${name?'pname':'pname-none'}">${esc(name)||'—'}</span></td>
+      <td>${typeof item.value==='number'?item.value.toFixed(3):esc(String(item.value??''))}</td>
+      <td>${esc(item.time||'')}</td>
+    </tr>`;
+  }).join('');
+  return `<table><thead><tr>
+    <th>#</th><th>地址(dec)</th><th>地址(hex)</th>
+    <th class="col-name">点名</th>
+    <th>值</th><th>时标</th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ── Param ─────────────────────────────────────────────────────
+function renderParam(f, proto) {
+  const rows = (f.data||[]).map((item,i) => {
+    const addrNum = parseInt(String(item.addr||'').replace(/^0x/i,''),16);
+    const name = ptName('para', isNaN(addrNum)?item.addr:addrNum);
+    return `<tr>
+      <td>${i+1}</td>
+      <td class="mono">${esc(item.addr??'')}</td>
+      <td class="col-name"><span class="${name?'pname':'pname-none'}">${esc(name)||'—'}</span></td>
+      <td>${esc(item.operation??'')}</td>
+      <td>${esc(String(item.value??''))}</td>
+    </tr>`;
+  }).join('');
+  return `<table><thead><tr>
+    <th>#</th><th>地址</th>
+    <th class="col-name">点名</th>
+    <th>操作</th><th>值</th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ── Link Frame ────────────────────────────────────────────────
+function renderLinkFrame(f) {
+  return `<div style="font-family:monospace;font-size:.75rem;color:#334155;padding:8px 12px;background:#f8fafc">
+    链路地址: ${esc(String(f.linkAddr??'—'))}
+    帧类型: ${esc(f.frameType||'—')}
+    方向: ${esc(f.ctrl?.direction||'—')}
+    功能码: ${esc(String(f.ctrl?.fc??'—'))} ${esc(f.ctrl?.fcName||'')}
+    校验: ${f.csValid?'✓':'✗'}
+  </div>`;
+}
+
+// ─── Toggle collapse ─────────────────────────────────────────
+function toggleBlock(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('collapsed');
+}
+
+// ─── Clear ───────────────────────────────────────────────────
+function clearAll() {
+  logText = ''; logFileName = ''; parseResult = null;
+  document.getElementById('logInput').value = '';
+  document.getElementById('logFileInput').value = '';
+  document.getElementById('dropZone').classList.remove('has-file');
+  document.getElementById('dropIcon').textContent = '📄';
+  document.getElementById('dropLabel').textContent = '点击选择 log 文件，或拖拽到此处';
+  document.getElementById('dropName').textContent = '';
+  checkParseEnable();
+  document.getElementById('downloadBtn').disabled = true;
+  document.getElementById('statsBar').className = 'stats-bar';
+  document.getElementById('output').innerHTML = '<div class="empty-hint">上传 log 文件后点击「解析 Log」按钮开始</div>';
+  document.getElementById('parseStatus').textContent = '';
+  document.getElementById('errorBox').style.display = 'none';
+}
+
+function setDefaultTableBasedOnProtocol(parseResult) {
+  if (!PT.ok || !PT.tableNames.length) return;
+  
+  // 统计协议类型
+  const protocols = {};
+  parseResult.lines.forEach(line => {
+    if (line.type === 'hex' && line.protocol) {
+      protocols[line.protocol] = (protocols[line.protocol] || 0) + 1;
+    }
+  });
+  
+  // 找出主要协议
+  let mainProto = null;
+  let maxCount = 0;
+  for (const [proto, count] of Object.entries(protocols)) {
+    if (count > maxCount) {
+      maxCount = count;
+      mainProto = proto;
+    }
+  }
+  
+  if (!mainProto) return;
+  
+  const sel = document.getElementById('tableSelect');
+  if (!sel) return;
+  
+  let defaultTable = '';
+  if (mainProto === '101') {
+    // 101 默认全点表
+    defaultTable = '';
+  } else if (mainProto === '104') {
+    // 104 默认抓发表，优先入网检
+    defaultTable = PT.tableNames.includes('入网检') ? '入网检' : (PT.tableNames[0] || '');
+  }
+  
+  if (defaultTable !== sel.value) {
+    sel.value = defaultTable;
+    rebuildPointMaps(defaultTable || null);
+    if (parseResult) renderResult(parseResult);
+  }
+}
+
+// ─── Download parsed log ─────────────────────────────────────
+function downloadLog() {
+  if (!parseResult) return;
+  const lines = parseResult.lines || [];
+  const parts = [];
+
+  lines.forEach(line => {
+    if (line.type === 'empty') { parts.push(''); return; }
+    if (line.type === 'debug') { parts.push(line.raw); return; }
+    if (line.type !== 'hex') { parts.push(line.raw); return; }
+
+    // Original line
+    parts.push(line.raw);
+
+    // Append parsed frames summary
+    const proto = line.protocol || '104';
+    parts.push(`  {${proto}}`);
+
+    (line.frames||[]).forEach(f => {
+      if (f.type === 'error') { parts.push(`  [*错误*] ${f.error}`); return; }
+      if (f.type === 'link_frame') { parts.push(`  [*链路帧*] 地址:${f.linkAddr} ${f.ctrl?.fcName||''}`); return; }
+
+      const typeLabel = {
+        yc:'*遥测*',yx:'*遥信*',soe:'*SOE遥信*',control:'*遥控*',
+        param:'*定值*',energy:'*电能量*',fault:'*故障事件*',
+        clock:'*对时*',total_call:'*总召*',heartbeat:'*心跳*',
+        init:'*初始化*'
+      }[f.type] || `*${f.type}*`;
+
+      parts.push(`  [${typeLabel}]`);
+
+      if (f.type === 'yc') {
+        parts.push(`  #\t协议\t地址(dec)\t地址(hex)\t点名\t值\t时标`);
+        (f.data||[]).forEach((item,i) => {
+          const name = ptName('yc', item.addr) || '—';
+          parts.push(`  ${i+1}\t${proto}\t${item.addr??''}\t${addrHex(item.addr,proto)}\t${name}\t${item.value??''}\t${item.time||''}`);
+        });
+      } else if (f.type === 'yx' || f.type === 'soe') {
+        parts.push(`  #\t协议\t地址(dec)\t地址(hex)\t点名\t状态\t触发时间`);
+        (f.data||[]).forEach((item,i) => {
+          const addr = item.addrDec ?? item.addr;
+          const name = ptName('yx', addr) || '—';
+          parts.push(`  ${i+1}\t${proto}\t${addr??''}\t${addrHex(addr,proto)}\t${name}\t${item.state??''}\t${item.time||item.timestamp||''}`);
+        });
+      } else if (f.type === 'control') {
+        parts.push(`  #\t协议\t地址\t点名\t状态\t操作\t结果`);
+        (f.data||[]).forEach((item,i) => {
+          const addrDec = parseInt(String(item.addr||'').replace(/^0x/i,''),16);
+          const name = ptName('yk', isNaN(addrDec)?item.addr:addrDec) || '—';
+          parts.push(`  ${i+1}\t${proto}\t${item.addr??''}\t${name}\t${item.state??''}\t${item.operation??''}\t${item.return??''}`);
+        });
+      } else if (f.type === 'fault') {
+        (f.yx||[]).forEach((item,i) => {
+          if (i===0) parts.push(`  #\t协议\t地址(dec)\t点名\t状态\t时标  [遥信]`);
+          const name = ptName('yx', item.point) || '—';
+          parts.push(`  ${i+1}\t${proto}\t${item.point??''}\t${name}\t${item.state??''}\t${item.time||''}`);
+        });
+        (f.yc||[]).forEach((item,i) => {
+          if (i===0) parts.push(`  #\t协议\t地址(dec)\t点名\t值\t时标  [遥测]`);
+          const name = ptName('yc', item.addr||item.point) || '—';
+          parts.push(`  ${i+1}\t${proto}\t${item.addr??item.point??''}\t${name}\t${item.value??''}\t${item.time||''}`);
+        });
+      } else if (f.type === 'energy') {
+        parts.push(`  #\t协议\t地址(dec)\t地址(hex)\t点名\t值\t时标`);
+        (f.data||[]).forEach((item,i) => {
+          const name = ptName('en', item.addr) || '—';
+          const val = typeof item.value==='number' ? item.value.toFixed(3) : (item.value??'');
+          parts.push(`  ${i+1}\t${proto}\t${item.addr??''}\t${addrHex(item.addr,proto)}\t${name}\t${val}\t${item.time||''}`);
+        });
+      } else {
+        parts.push(`  ${JSON.stringify(f)}`);
+      }
+    });
+    parts.push('');
+  });
+
+  const blob = new Blob([parts.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (logFileName.replace(/\.[^.]+$/, '') || 'parsed') + '_parsed.log';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>

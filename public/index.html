@@ -21,6 +21,7 @@
             font-size: 1.8rem; font-weight: 700; margin: 0 0 6px;
             color: #0f172a; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
         }
+        h1 .nav-link { margin-left: auto; }
         h1 .badge { background: #2563eb; color: white; font-size: 0.75rem; padding: 3px 12px; border-radius: 30px; font-weight: 400; }
         h1 .badge-101 { background: #0891b2; }
         .sub {
@@ -186,15 +187,16 @@
         .ev-test    { color: #a3e635; }
         .ev-unknown { color: #6b7280; }
 
-        .grid-2 { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
-        @media(max-width:900px) { .grid-2 { grid-template-columns:1fr; } }
+        .grid-2 { display:flex; flex-direction:column; gap:16px; }
         tr.row-101 td { background: #ecfeff !important; }
         tr.row-104 td { background: #eff6ff !important; }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>⚡ 104/101规约解析器 <span class="badge">104</span><span class="badge badge-101">101</span></h1>
+    <h1>⚡ 104/101规约解析器 <span class="badge">104</span><span class="badge badge-101">101</span>
+      <a href="/fileParser.html" class="nav-link" style="font-size:.82rem;font-weight:400;color:#7c3aed;text-decoration:none;padding:5px 14px;border:1.5px solid #ddd6fe;border-radius:20px;transition:background .15s" onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background=''">📄 点击Log文件解析</a>
+    </h1>
     <div class="sub">
         支持 <strong>IEC 60870-5-104</strong> 与 <strong>DL/T634.5101-2002</strong> 双协议同时解析。
         每行一帧十六进制报文。自动识别协议，也可在行首加 <code>[101]</code> 或 <code>[104]</code> 手动指定。<br>
@@ -235,7 +237,6 @@
     <div class="error-box" id="errorBox"></div>
 
     <div class="grid-2">
-        <div>
             <!-- 遥测 -->
             <div class="cs" id="sec-yc">
                 <div class="cs-head" onclick="toggleSec('sec-yc')">
@@ -286,9 +287,7 @@
                     </tr></thead><tbody id="energyBody"></tbody></table>
                 </div></div>
             </div>
-        </div>
 
-        <div>
             <!-- 遥控 -->
             <div class="cs" id="sec-ctrl">
                 <div class="cs-head" onclick="toggleSec('sec-ctrl')">
@@ -322,7 +321,7 @@
                     </tr></thead><tbody id="paramBody"></tbody></table>
                 </div></div>
             </div>
-        </div>
+
     </div>
 
     <!-- 101链路层帧 -->
