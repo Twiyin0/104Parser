@@ -312,113 +312,62 @@ const PT = {
   switchENPoint : new Map(),
   maps : { para: new Map() },
   raw : { yc:[], yx:[], yk:[], en:[], para:[] },
-  rawByTable: {},
-  dbTables: [],
   tableNames : [],
   curTable : null,
   ok : false
 };
 
+// 与 index.html 完全相同的 rebuildMaps 逻辑
 function rebuildPointMaps(tableName) {
-  PT.curTable = tableName;
-  const isTransfer = (tableName && tableName !== '全点表');
+    PT.curTable = tableName;
 
-  const normalizeName = name => name == null ? '' : String(name).trim();
+    // 是否为转发表（非NULL、非全点表）
+    const isTransfer = (tableName !== null && tableName !== '全点表');
 
-  const buildMap = (rows, byTransfer = false) => {
-    const m = new Map();
-    for (const r of rows) {
-      if (!r) continue;
-      const rowTable = normalizeName(r.TableName);
-      if (tableName && tableName !== '' && tableName !== '全点表' && tableName !== rowTable) {
-        if (!PT.dbTables.includes(tableName)) continue;
-      }
+    // 建 key→Name Map（与 index.html rebuildMaps 逻辑完全一致）
+    const buildMap = (rows) => {
+        const m = new Map();
+        for (const r of rows) {
+            if ((r.TableName ?? null) !== tableName) continue;
+            const key  = isTransfer
+                ? (r.SwitchPoint != null ? Number(r.SwitchPoint) : null)
+                : (r.Addr        != null ? Number(r.Addr)        : null);
+            const name = isTransfer
+                ? (r.SwitchName ? String(r.SwitchName).trim() : '')
+                : (r.Name       ? String(r.Name).trim()       : '');
+            if (key != null && key > 0 && name) m.set(key, name);
+        }
+        return m;
+    };
 
-      let key, name;
-      if (byTransfer || (isTransfer && rowTable)) {
-        key = r.SwitchPoint != null ? Number(r.SwitchPoint) : null;
-        name = normalizeName(r.SwitchName || r.SwitchName || r.name || r.Name);
-      } else {
-        key = r.Addr != null ? Number(r.Addr) : (r.addr != null ? Number(r.addr) : null);
-        name = normalizeName(r.Name || r.name || r.SwitchName);
-      }
+    PT.switchYXPoint = buildMap(PT.raw.yx);
+    PT.switchYCPoint = buildMap(PT.raw.yc);
+    PT.switchYKPoint = buildMap(PT.raw.yk);
+    PT.switchENPoint = buildMap(PT.raw.en);
 
-      if (key != null && !Number.isNaN(key) && name) {
-        m.set(String(key), name);
-      }
-    }
-    return m;
-  };
-
-  // 对于 db 表名作为选择项（如 yc/yx/入网检），优先按原表数据生成映射。
-  if (tableName && PT.dbTables.includes(tableName) && PT.rawByTable[tableName]) {
-    const rows = PT.rawByTable[tableName];
-
-    const lowerName = String(tableName).toLowerCase();
-    let useType = null;
-    if (['yc','yx','yk','en','para'].includes(lowerName)) useType = lowerName;
-    // support Chinese label as yx类型转发表
-    if (!useType && /入网检|遥信|遥测|遥控|电能|定值/.test(tableName)) {
-      useType = tableName === '遥测' ? 'yc' : tableName === '遥控' ? 'yk' : tableName === '电能' ? 'en' : tableName === '定值' ? 'para' : 'yx';
-    }
-
-    PT.switchYXPoint = new Map();
-    PT.switchYCPoint = new Map();
-    PT.switchYKPoint = new Map();
-    PT.switchENPoint = new Map();
-
-    if (useType) {
-      const m = buildMap(rows, useType === 'yx');
-      if (useType === 'yx') PT.switchYXPoint = m;
-      if (useType === 'yc') PT.switchYCPoint = m;
-      if (useType === 'yk') PT.switchYKPoint = m;
-      if (useType === 'en') PT.switchENPoint = m;
-    } else {
-      // 默认当作转发表（yx）
-      PT.switchYXPoint = buildMap(rows, true);
-    }
-
+    // 参数表：UpAddr→Name（只有NULL行）
     PT.maps.para = new Map();
-    for (const r of PT.raw.para) {
-      if (!r || r.UpAddr == null) continue;
-      PT.maps.para.set(String(Number(r.UpAddr)), normalizeName(r.Name));
-    }
+    for (const r of PT.raw.para)
+        if (r.UpAddr) PT.maps.para.set(Number(r.UpAddr), String(r.Name ?? '').trim());
 
     PT.ok = true;
-    return;
-  }
-
-  PT.switchYXPoint = buildMap(PT.raw.yx, isTransfer);
-  PT.switchYCPoint = buildMap(PT.raw.yc, isTransfer);
-  PT.switchYKPoint = buildMap(PT.raw.yk, isTransfer);
-  PT.switchENPoint = buildMap(PT.raw.en, isTransfer);
-
-  PT.maps.para = new Map();
-  for (const r of PT.raw.para) {
-    if (!r || r.UpAddr == null) continue;
-    PT.maps.para.set(String(Number(r.UpAddr)), normalizeName(r.Name));
-  }
-
-  PT.ok = true;
 }
 
 function getTableNamesFromPT() {
-  const names = new Set();
-  for (const type of ['yc', 'yx', 'yk', 'en', 'para']) {
-    for (const r of PT.raw[type]) {
-      const tn = r.TableName ? String(r.TableName).trim() : '';
-      if (tn) names.add(tn);
-    }
-  }
-
-  // 兼容无 TableName，直接用 DB 表名（如 sample.db 的 yc/yx/yk）
-  if (names.size === 0 && PT.dbTables.length > 0) {
-    PT.dbTables.forEach(t => {
-      if (t && !t.startsWith('sqlite_')) names.add(t);
+    const tnSet = new Set();
+    for (const arr of [PT.raw.yc, PT.raw.yx, PT.raw.yk, PT.raw.en])
+        for (const r of arr) {
+            const tn = r.TableName;
+            if (tn === undefined) continue;
+            tnSet.add(tn ?? null);
+        }
+    // null 排最后，其余按中文排序
+    return [...tnSet].sort((a,b) => {
+        if (a == null && b == null) return 0;
+        if (a == null) return 1;
+        if (b == null) return -1;
+        return String(a).localeCompare(String(b), 'zh');
     });
-  }
-
-  return Array.from(names).sort((a,b) => String(a).localeCompare(b, 'zh'));
 }
 
 // ─── DB Loading ────────────────────────────────────────────
@@ -498,83 +447,49 @@ function loadDB(file) {
             }
           };
           
-          // 逐表读取数据（兼容 tableName 字段以及单独表名如 yc/yx/yk）
-          console.log('📊 开始读取表数据...');
-          let dbData = { yc:{}, yx:{}, yk:{}, en:{}, para:{} };
+          // 与 index.html 完全一致：直接查询标准 Project 表
+          console.log('📊 开始读取点表数据（ProjectYcPoint / ProjectYxPoint / ...）...');
           PT.raw = { yc:[], yx:[], yk:[], en:[], para:[] };
-          PT.rawByTable = {};
 
-          // 获取所有表名
-          const allTables = readTable("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
-          PT.dbTables = allTables.map(t => t.name);
-          console.log('找到表:', PT.dbTables.join(', '));
+          PT.raw.yc   = readTable('SELECT Addr, BoardPoint, Name, SwitchPoint, SwitchName, TableName FROM ProjectYcPoint   ORDER BY Addr');
+          PT.raw.yx   = readTable('SELECT Addr, BoardPoint, Name, SwitchPoint, SwitchName, TableName FROM ProjectYxPoint   ORDER BY Addr');
+          PT.raw.yk   = readTable('SELECT Addr, BoardPoint, Name, SwitchPoint, SwitchName, TableName FROM ProjectYkPoint   ORDER BY Addr');
+          PT.raw.en   = readTable('SELECT Addr, Name, SwitchPoint, SwitchName, TableName FROM ProjectEnergyPoint ORDER BY Addr');
+          PT.raw.para = readTable('SELECT UpAddr, Name, TableName FROM ProjectParaTransferPoint');
 
-          const tableTypeCandidates = {
-            yc: ['yc', 'projectycpoint', 'jfxxx_yc', 'resource_yc', '遥测'],
-            yx: ['yx', 'projectyxpoint', 'jfxxx_yx', 'resource_yx', '遥信', '入网检'],
-            yk: ['yk', 'projectykpoint', 'jfxxx_yk', 'resource_yk', '遥控'],
-            en: ['en', 'projectenergypoint', 'energy', '电能'],
-            para: ['para', 'projectparatransferpoint', 'parameter', '定值']
-          };
-
-          const normalizeTableName = (name) => String(name || '').trim().toLowerCase();
-          const guessType = (name, cols) => {
-            const n = normalizeTableName(name);
-            for (const [type, candidates] of Object.entries(tableTypeCandidates)) {
-              if (candidates.includes(n)) return type;
-            }
-            // 根据字段猜测
-            const lowerCols = cols.map(c=>c.name.toLowerCase());
-            if (lowerCols.includes('switchpoint') && lowerCols.includes('switchname')) return 'yx';
-            if (lowerCols.includes('addr') && lowerCols.includes('name')) {
-              if (n === '入网检' || n.includes('检')) return 'yx';
-              if (n === '遥测') return 'yc';
-              if (n === '遥控') return 'yk';
-              if (n === '电能') return 'en';
-              return 'yx';
-            }
-            return null;
-          };
-
-          for (const tableName of PT.dbTables) {
-            const cols = readTable(`PRAGMA table_info(\`${tableName}\`)`);
-            const rows = readTable(`SELECT * FROM \`${tableName}\``);
-            PT.rawByTable[tableName] = rows;
-
-            const type = guessType(tableName, cols);
-            if (type && Array.isArray(rows) && rows.length) {
-              PT.raw[type] = rows;
-
-              rows.forEach(row => {
-                const addr = row.addr != null ? String(row.addr) : (row.Addr != null ? String(row.Addr) : '');
-                const name = row.name || row.Name || row.SwitchName || row.name || '';
-                if (addr) {
-                  dbData[type][String(addr)] = String(name || addr);
-                }
-              });
-            }
-          }
+          console.log(`✅ 读取完成：yc=${PT.raw.yc.length} yx=${PT.raw.yx.length} yk=${PT.raw.yk.length} en=${PT.raw.en.length} para=${PT.raw.para.length}`);
 
           db.close();
-          console.log('✅ 数据库读取完成');
 
-          // 初始化点表原始行（用于转发表选择）
-          // PT.raw 在上面已经填充；allRows已废弃
-          PT.tableNames = getTableNamesFromPT();
+          // 收集所有 TableName（与 index.html 完全一致）
+          const tnSet = new Set();
+          for (const arr of [PT.raw.yc, PT.raw.yx, PT.raw.yk, PT.raw.en])
+              for (const r of arr) {
+                  const tn = r.TableName;
+                  if (tn === undefined) continue;
+                  tnSet.add(tn ?? null);
+              }
+          // null 排最后，其余按中文排序
+          PT.tableNames = [...tnSet].sort((a,b) => {
+              if (a == null && b == null) return 0;
+              if (a == null) return 1;
+              if (b == null) return -1;
+              return String(a).localeCompare(String(b), 'zh');
+          });
+
           populateTableSelect(PT.tableNames);
 
-          const defaultName = PT.tableNames.includes('入网检') ? '入网检' : (PT.tableNames[0] || '');
+          // 默认选择：优先"入网检"，再取第一个非null，最后用 null（全点表）
+          const defaultName = PT.tableNames.includes('入网检')
+              ? '入网检'
+              : (PT.tableNames.find(t => t !== null) ?? null);
           if (defaultName) {
-            const sel = document.getElementById('tableSelect');
-            if (sel) sel.value = defaultName;
-            rebuildPointMaps(defaultName);
-          } else {
-            rebuildPointMaps('全点表');
+              const sel = document.getElementById('tableSelect');
+              if (sel) sel.value = defaultName;
           }
+          rebuildPointMaps(defaultName);
 
-          // 仍保留快速查找映射（兼容旧行为）
-          dbData = normalizeDB(dbData);
-          onDBLoaded(file.name, dbData);
+          onDBLoaded(file.name, null);
           
         } catch (sqlErr) {
           throw new Error('数据库解析失败：' + (sqlErr?.message || sqlErr));
@@ -671,19 +586,16 @@ function applyTableSelect() {
 document.getElementById('tableSelect').addEventListener('change', applyTableSelect);
 
 function onDBLoaded(name, db) {
-  // PT.ok 在 rebuildPointMaps 中控制，保持加载后状态不重置
+  // PT.ok 在 rebuildPointMaps 中控制
   const bar = document.getElementById('dbBar');
   const pill = document.getElementById('dbPill');
   const detail = document.getElementById('dbDetail');
-  const ycN = Object.keys(db.yc||{}).length;
-  const yxN = Object.keys(db.yx||{}).length;
-  const ykN = Object.keys(db.yk||{}).length;
-  const totalPoints = ycN+yxN+ykN;
+  const ycN = PT.raw.yc.length;
+  const yxN = PT.raw.yx.length;
+  const ykN = PT.raw.yk.length;
+  const totalPoints = ycN + yxN + ykN;
   console.log(`✅ 点表加载成功: yc=${ycN} yx=${yxN} yk=${ykN} 共=${totalPoints}`);
-  
-  // 设置全局 dbData
-  dbData = db;
-  
+
   pill.className = 'db-pill ok';
   pill.textContent = `已加载 ${totalPoints} 点`;
   bar.className = 'db-bar ok';
@@ -700,7 +612,6 @@ function clearDB() {
   PT.curTable = null;
   PT.tableNames = [];
   PT.raw = { yc:[], yx:[], yk:[], en:[], para:[] };
-  const bar = document.getElementById('dbBar');
   const pill = document.getElementById('dbPill');
   const detail = document.getElementById('dbDetail');
   bar.className = 'db-bar';
@@ -784,39 +695,18 @@ async function parseLog() {
 
 // ─── Render ─────────────────────────────────────────────────
 function ptName(type, addr) {
-  if (PT.ok) {
-    const n = Number(addr);
-    if (Number.isNaN(n)) return '';
-    const isTransfer = (PT.curTable !== null && PT.curTable !== '全点表');
-    switch (type) {
-      case 'yx':   return PT.switchYXPoint.get(String(isTransfer ? n : n)) || '';
-      case 'yc':   return PT.switchYCPoint.get(String(isTransfer ? n - 0x4000 : n)) || '';
-      case 'yk':   return PT.switchYKPoint.get(String(isTransfer ? n - 0x6000 : n)) || '';
-      case 'en':   return PT.switchENPoint.get(String(isTransfer ? n - 0x6400 : n)) || '';
-      case 'para': return PT.maps.para.get(String(n)) || '';
-      default: return '';
-    }
+  if (!PT.ok) return '';
+  const n = Number(addr);
+  if (Number.isNaN(n)) return '';
+  const isTransfer = (PT.curTable !== null && PT.curTable !== '全点表');
+  switch (type) {
+    case 'yx':   return PT.switchYXPoint.get(isTransfer ? n          : n) ?? '';
+    case 'yc':   return PT.switchYCPoint.get(isTransfer ? n - 0x4000 : n) ?? '';
+    case 'yk':   return PT.switchYKPoint.get(isTransfer ? n - 0x6000 : n) ?? '';
+    case 'en':   return PT.switchENPoint.get(isTransfer ? n - 0x6400 : n) ?? '';
+    case 'para': return PT.maps.para.get(n) ?? '';
+    default: return '';
   }
-
-  if (!dbData || addr == null) return '';
-
-  const map = dbData[type] || {};
-
-  // 🔥 统一转成十进制 number
-  let key = addr;
-
-  if (typeof addr === 'string') {
-    if (/^0x/i.test(addr)) {
-      key = parseInt(addr, 16);
-    } else {
-      key = parseInt(addr, 10);
-    }
-  }
-
-  // 再统一成字符串 key
-  key = String(key);
-
-  return map[key] || '';
 }
 
 function esc(s) {
