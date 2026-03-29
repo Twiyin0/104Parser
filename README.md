@@ -64,8 +64,7 @@ npm run upload
 │   ├── index.html             # 实时解析页面
 │   └── fileParser.html        # 日志文件解析页面
 ├── upload/
-│   ├── upload.js              # 远程部署脚本
-│   └── test.js
+│   └── upload.js              # 远程部署脚本
 ├── .env                       # 环境变量文件
 └── package.json
 ```
@@ -114,6 +113,12 @@ SSH_PORT=22
 ---
 
 ## Changelog
+
+### [1.1.4] - 2026-03-29
+
+**改进**
+- **修复逻辑问题**
+  - 修复fileParser解析点名的逻辑
 
 ### [1.1.3] - 2026-03-29
 

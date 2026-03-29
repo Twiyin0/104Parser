@@ -10,3 +10,4 @@ setENV.bat
 *test*
 *.test.*
 dist/
+*.zip
