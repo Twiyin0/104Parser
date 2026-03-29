@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu } = require('electron');  // 添加 Menu
+const { app, BrowserWindow, Menu, ipcMain } = require('electron');  // 添加 Menu
 const path = require('path');
 const server = require('../src/server');
 
@@ -12,7 +12,10 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
+    frame: false,
+    titleBarStyle: 'hidden',
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
@@ -28,10 +31,35 @@ function createWindow() {
     mainWindow.show();
   });
 
+  mainWindow.on('maximize', () => {
+    mainWindow.webContents.send('window-maximized');
+  });
+
+  mainWindow.on('unmaximize', () => {
+    mainWindow.webContents.send('window-unmaximized');
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
 }
+
+ipcMain.on('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.on('window-maximize', () => {
+  if (mainWindow) mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow) mainWindow.close();
+});
+
+ipcMain.handle('window-is-maximized', () => {
+  return mainWindow ? mainWindow.isMaximized() : false;
+});
 
 app.whenReady().then(() => {
   server.listen(port, () => {

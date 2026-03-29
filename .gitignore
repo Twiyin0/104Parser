@@ -12,3 +12,4 @@ setENV.bat
 dist/
 yarn.lock
 yarn-error.log
+.yarn
