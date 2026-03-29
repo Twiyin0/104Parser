@@ -149,6 +149,83 @@ tr:hover td{background:var(--row-bg)}
 .error-msg{background:var(--error-bg);color:var(--error-text);padding:8px 12px;border-radius:10px;margin-bottom:10px;border:1px solid var(--danger-bg);font-size:.85rem}
 .col-name{display:none}
 body.has-db .col-name{display:table-cell}
+
+/* ── 时间高亮 ── */
+.time-hl{
+  background:#fef9c3;
+  color:#854d0e;
+  border-radius:3px;
+  padding:0 3px 1px;
+  font-weight:700;
+  font-family:'JetBrains Mono',monospace;
+  font-size:.77rem;
+  letter-spacing:.01em;
+}
+html.dark-theme .time-hl{background:#451a03;color:#fcd34d;border:1px solid #78350f}
+
+/* ── 过滤调试信息 Toggle ── */
+.log-input-title-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.filter-toggle-wrap{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  flex-shrink:0;
+}
+.filter-toggle-label{
+  font-size:.78rem;
+  color:var(--text-tertiary);
+  font-weight:500;
+  cursor:pointer;
+  user-select:none;
+  white-space:nowrap;
+  transition:color .2s;
+}
+.filter-toggle-label.active{color:var(--accent-primary)}
+/* Toggle switch */
+.toggle-switch{
+  position:relative;
+  width:38px;
+  height:22px;
+  flex-shrink:0;
+  cursor:pointer;
+}
+.toggle-switch input{
+  opacity:0;
+  width:0;
+  height:0;
+  position:absolute;
+}
+.toggle-track{
+  position:absolute;
+  inset:0;
+  background:var(--border-color);
+  border-radius:22px;
+  transition:background .25s cubic-bezier(.4,0,.2,1);
+  cursor:pointer;
+}
+.toggle-switch input:checked + .toggle-track{
+  background:var(--accent-primary);
+}
+.toggle-thumb{
+  position:absolute;
+  top:3px;
+  left:3px;
+  width:16px;
+  height:16px;
+  background:#fff;
+  border-radius:50%;
+  transition:transform .25s cubic-bezier(.4,0,.2,1);
+  box-shadow:0 1px 4px rgba(0,0,0,.25);
+  pointer-events:none;
+}
+.toggle-switch input:checked ~ .toggle-thumb{
+  transform:translateX(16px);
+}
 </style>
 </head>
 <body>
@@ -199,7 +276,27 @@ body.has-db .col-name{display:table-cell}
   <!-- Log Text Input -->
   <div class="ctrl-row" style="min-height:40vh;flex:1;margin-bottom:6px;">
     <div class="log-input-box">
-      <div class="log-input-title">输入 log 文本解析</div>
+      <div class="log-input-title-row">
+        <div class="log-input-title">输入 log 文本解析</div>
+        <div class="filter-toggle-group" style="display:flex;align-items:center;gap:10px;">
+          <div class="filter-toggle-wrap">
+            <label class="filter-toggle-label" id="filterLabel" for="filterDebugToggle">过滤调试信息</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="filterDebugToggle" onchange="applyDebugFilter()">
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+          </div>
+          <div class="filter-toggle-wrap">
+            <label class="filter-toggle-label" id="follow101Label" for="follow101Toggle">101 转发</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="follow101Toggle" onchange="apply101FollowToggle()">
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+          </div>
+        </div>
+      </div>
       <textarea id="logInput" placeholder="粘贴一小段 log 文本进行解析（可选，优先于文件）" oninput="checkParseEnable()"></textarea>
     </div>
   </div>
@@ -232,149 +329,103 @@ let sqlLoadPromise = null;
 let sqlRetries = 0;
 const MAX_RETRIES = 3;
 
-// 初始化 sql.js
 function initSQL() {
-  if (sqlReady && SQL) {
-    return Promise.resolve(SQL);
-  }
-  
-  if (sqlLoadPromise) {
-    return sqlLoadPromise; // 返回已存在的承诺，避免重复加载
-  }
-  
+  if (sqlReady && SQL) return Promise.resolve(SQL);
+  if (sqlLoadPromise) return sqlLoadPromise;
   sqlLoadPromise = new Promise((resolve, reject) => {
     if (typeof initSqlJs === 'undefined') {
-      // sql.js 脚本可能还没加载，等待一下再试
-      console.log('⏳ 等待 initSqlJs 全局变量可用...');
       setTimeout(() => {
         if (typeof initSqlJs === 'undefined') {
           reject(new Error('initSqlJs 未定义 - sql.js 库加载失败'));
         } else {
-          // 重新开始
           sqlLoadPromise = null;
           initSQL().then(resolve).catch(reject);
         }
       }, 500);
       return;
     }
-    
-    console.log(`⏳ sql.js 库加载中... (${sqlRetries + 1}/${MAX_RETRIES})`);
-    
-    initSqlJs({
-      locateFile: (file) => {
-        const url = `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${file}`;
-        console.log(`📦 加载资源: ${file}`);
-        return url;
-      }
-    })
-    .then(sql => {
-      SQL = sql;
-      sqlReady = true;
-      sqlRetries = 0;
-      console.log('✅ sql.js 库加载成功');
-      resolve(sql);
-    })
+    initSqlJs({ locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${file}` })
+    .then(sql => { SQL = sql; sqlReady = true; sqlRetries = 0; resolve(sql); })
     .catch(err => {
-      sqlLoadPromise = null; // 重置，以便重试
-      console.warn(`❌ sql.js 加载失败 (第 ${sqlRetries + 1} 次): ${err.message}`);
-      
+      sqlLoadPromise = null;
       if (sqlRetries < MAX_RETRIES) {
         sqlRetries++;
-        console.log(`⏳ 3秒后重试... (${sqlRetries}/${MAX_RETRIES})`);
-        setTimeout(() => {
-          initSQL().then(resolve).catch(reject);
-        }, 3000);
+        setTimeout(() => initSQL().then(resolve).catch(reject), 3000);
       } else {
         reject(new Error(`sql.js 加载失败，已重试 ${MAX_RETRIES} 次：${err.message}`));
       }
     });
   });
-  
   return sqlLoadPromise;
 }
 
-// 启动初始化（页面加载时）
-console.log('🚀 页面加载完毕，启动 sql.js 初始化...');
-initSQL().catch(e => {
-  console.warn('⚠️ 后台加载失败: ' + e.message + ' - 将在首次使用数据库时重试');
-});
+initSQL().catch(e => console.warn('⚠️ 后台加载失败: ' + e.message));
 
 // ─── State ─────────────────────────────────────────────────
 let logText = '';
 let logFileName = '';
-let dbData = null;       // {yc:{addr:name}, yx:{}, yk:{}, en:{}, para:{}}
-let parseResult = null;  // server response
+let dbData = null;
+let parseResult = null;
 
 const PT = {
   switchYXPoint : new Map(),
   switchYCPoint : new Map(),
   switchYKPoint : new Map(),
   switchENPoint : new Map(),
+  allYXPoint : new Map(),
+  allYCPoint : new Map(),
+  allYKPoint : new Map(),
+  allENPoint : new Map(),
   maps : { para: new Map() },
   raw : { yc:[], yx:[], yk:[], en:[], para:[] },
   tableNames : [],
   curTable : null,
-  ok : false
+  ok : false,
+  follow101Transfer : false
 };
 
-// 与 index.html 完全相同的 rebuildMaps 逻辑
 function rebuildPointMaps(tableName) {
     PT.curTable = tableName;
-
-    // 是否为转发表（非NULL、非全点表）
     const isTransfer = (tableName !== null && tableName !== '全点表');
-
-    // 建 key→Name Map（与 index.html rebuildMaps 逻辑完全一致）
-    const buildMap = (rows) => {
+    const buildAllMap = (rows) => {
         const m = new Map();
         for (const r of rows) {
-            if ((r.TableName ?? null) !== tableName) continue;
-            const key  = isTransfer
-                ? (r.SwitchPoint != null ? Number(r.SwitchPoint) : null)
-                : (r.Addr        != null ? Number(r.Addr)        : null);
-            const name = isTransfer
-                ? (r.SwitchName ? String(r.SwitchName).trim() : '')
-                : (r.Name       ? String(r.Name).trim()       : '');
+            const key  = (r.Addr != null ? Number(r.Addr) : null);
+            const name = (r.Name ? String(r.Name).trim() : '');
             if (key != null && key > 0 && name) m.set(key, name);
         }
         return m;
     };
-
-    PT.switchYXPoint = buildMap(PT.raw.yx);
-    PT.switchYCPoint = buildMap(PT.raw.yc);
-    PT.switchYKPoint = buildMap(PT.raw.yk);
-    PT.switchENPoint = buildMap(PT.raw.en);
-
-    // 参数表：UpAddr→Name（只有NULL行）
-    PT.maps.para = new Map();
-    for (const r of PT.raw.para)
-        if (r.UpAddr) PT.maps.para.set(Number(r.UpAddr), String(r.Name ?? '').trim());
-
-    PT.ok = true;
-}
-
-function getTableNamesFromPT() {
-    const tnSet = new Set();
-    for (const arr of [PT.raw.yc, PT.raw.yx, PT.raw.yk, PT.raw.en])
-        for (const r of arr) {
-            const tn = r.TableName;
-            if (tn === undefined) continue;
-            tnSet.add(tn ?? null);
+    const buildSwitchMap = (rows) => {
+        const m = new Map();
+        for (const r of rows) {
+            if (tableName !== null && tableName !== '全点表') {
+                if ((r.TableName ?? null) !== tableName) continue;
+            }
+            const key  = isTransfer ? (r.SwitchPoint != null ? Number(r.SwitchPoint) : null) : (r.Addr != null ? Number(r.Addr) : null);
+            const name = isTransfer ? (r.SwitchName ? String(r.SwitchName).trim() : '') : (r.Name ? String(r.Name).trim() : '');
+            if (key != null && key > 0 && name) m.set(key, name);
         }
-    // null 排最后，其余按中文排序
-    return [...tnSet].sort((a,b) => {
-        if (a == null && b == null) return 0;
-        if (a == null) return 1;
-        if (b == null) return -1;
-        return String(a).localeCompare(String(b), 'zh');
-    });
+        return m;
+    };
+    PT.allYXPoint = buildAllMap(PT.raw.yx);
+    PT.allYCPoint = buildAllMap(PT.raw.yc);
+    PT.allYKPoint = buildAllMap(PT.raw.yk);
+    PT.allENPoint = buildAllMap(PT.raw.en);
+
+    PT.switchYXPoint = buildSwitchMap(PT.raw.yx);
+    PT.switchYCPoint = buildSwitchMap(PT.raw.yc);
+    PT.switchYKPoint = buildSwitchMap(PT.raw.yk);
+    PT.switchENPoint = buildSwitchMap(PT.raw.en);
+
+    PT.maps.para = new Map();
+    for (const r of PT.raw.para) if (r.UpAddr) PT.maps.para.set(Number(r.UpAddr), String(r.Name ?? '').trim());
+    PT.ok = true;
 }
 
 // ─── DB Loading ────────────────────────────────────────────
 document.getElementById('dbFileInput').addEventListener('change', e => {
-  const f = e.target.files[0]; 
-  if (!f) return;
-  console.log('📂 选择文件:', f.name, '大小:', f.size, 'bytes');
+  const f = e.target.files[0]; if (!f) return;
   loadDB(f);
 });
 
@@ -382,176 +433,92 @@ function loadDB(file) {
   const bar = document.getElementById('dbBar');
   const pill = document.getElementById('dbPill');
   const detail = document.getElementById('dbDetail');
-  
   const ext = file.name.toLowerCase().split('.').pop();
-  console.log('🔄 开始加载文件:', file.name, '大小:', file.size, 'bytes');
-  
-  // 对于 SQLite 文件，先显示加载提示
   if (ext === 'db' || ext === 'sqlite' || ext === 'sqlite3') {
-    pill.className = 'db-pill loading'; 
-    pill.textContent = '初始化...';
+    pill.className = 'db-pill loading'; pill.textContent = '初始化...';
     detail.textContent = '正在加载 sql.js 库...';
     bar.className = 'db-bar loading';
   } else {
-    pill.className = 'db-pill loading'; 
-    pill.textContent = '加载中...';
+    pill.className = 'db-pill loading'; pill.textContent = '加载中...';
     bar.className = 'db-bar loading';
   }
-
   const reader = new FileReader();
-  
   reader.onerror = (e) => {
-    console.error('❌ 文件读取错误:', e);
     pill.className = 'db-pill err'; pill.textContent = '读取失败';
     bar.className = 'db-bar err';
     detail.textContent = '无法读取文件：' + (e?.message || e);
   };
-  
   reader.onload = async (ev) => {
     try {
-      // Handle SQLite binary file
       if (ext === 'db' || ext === 'sqlite' || ext === 'sqlite3') {
-        console.log('📦 检测到 SQLite 文件');
-        
-        // 等待 sql.js 就绪
         pill.textContent = '正在加载 sql.js...';
         detail.textContent = '此过程需要几秒钟，请稍候...';
-        
         let sql;
+        try { sql = await initSQL(); pill.textContent = '解析中...'; detail.textContent = '正在解析数据库结构...'; }
+        catch (sqlErr) { throw new Error('sql.js 库加载失败：' + sqlErr.message); }
         try {
-          sql = await initSQL();
-          pill.textContent = '解析中...';
-          detail.textContent = '正在解析数据库结构...';
-        } catch (sqlErr) {
-          throw new Error('sql.js 库加载失败：' + sqlErr.message + '\n\n如果问题持续，请检查网络连接或刷新页面。');
-        }
-        
-        try {
-          console.log('✓ sql.js 已就绪，开始解析数据库...');
           const data = new Uint8Array(ev.target.result);
           const db = new sql.Database(data);
-          
-          // 通用读表函数（参考 index.html）
-          const readTable = (sql) => {
+          const readTable = (sqlStr) => {
             try {
-              const stmt = db.prepare(sql);
+              const stmt = db.prepare(sqlStr);
               const rows = [];
-              while (stmt.step()) {
-                rows.push(stmt.getAsObject());
-              }
-              stmt.free();
-              return rows;
-            } catch(e) {
-              console.warn('执行 SQL 失败:', sql, e.message);
-              return [];
-            }
+              while (stmt.step()) rows.push(stmt.getAsObject());
+              stmt.free(); return rows;
+            } catch(e) { return []; }
           };
-          
-          // 与 index.html 完全一致：直接查询标准 Project 表
-          console.log('📊 开始读取点表数据（ProjectYcPoint / ProjectYxPoint / ...）...');
           PT.raw = { yc:[], yx:[], yk:[], en:[], para:[] };
-
           PT.raw.yc   = readTable('SELECT Addr, BoardPoint, Name, SwitchPoint, SwitchName, TableName FROM ProjectYcPoint   ORDER BY Addr');
           PT.raw.yx   = readTable('SELECT Addr, BoardPoint, Name, SwitchPoint, SwitchName, TableName FROM ProjectYxPoint   ORDER BY Addr');
           PT.raw.yk   = readTable('SELECT Addr, BoardPoint, Name, SwitchPoint, SwitchName, TableName FROM ProjectYkPoint   ORDER BY Addr');
           PT.raw.en   = readTable('SELECT Addr, Name, SwitchPoint, SwitchName, TableName FROM ProjectEnergyPoint ORDER BY Addr');
           PT.raw.para = readTable('SELECT UpAddr, Name, TableName FROM ProjectParaTransferPoint');
-
-          console.log(`✅ 读取完成：yc=${PT.raw.yc.length} yx=${PT.raw.yx.length} yk=${PT.raw.yk.length} en=${PT.raw.en.length} para=${PT.raw.para.length}`);
-
           db.close();
-
-          // 收集所有 TableName（与 index.html 完全一致）
           const tnSet = new Set();
           for (const arr of [PT.raw.yc, PT.raw.yx, PT.raw.yk, PT.raw.en])
-              for (const r of arr) {
-                  const tn = r.TableName;
-                  if (tn === undefined) continue;
-                  tnSet.add(tn ?? null);
-              }
-          // null 排最后，其余按中文排序
+              for (const r of arr) { const tn = r.TableName; if (tn === undefined) continue; tnSet.add(tn ?? null); }
           PT.tableNames = [...tnSet].sort((a,b) => {
-              if (a == null && b == null) return 0;
-              if (a == null) return 1;
-              if (b == null) return -1;
+              if (a == null && b == null) return 0; if (a == null) return 1; if (b == null) return -1;
               return String(a).localeCompare(String(b), 'zh');
           });
-
           populateTableSelect(PT.tableNames);
-
-          // 默认选择：优先"入网检"，再取第一个非null，最后用 null（全点表）
-          const defaultName = PT.tableNames.includes('入网检')
-              ? '入网检'
-              : (PT.tableNames.find(t => t !== null) ?? null);
-          if (defaultName) {
-              const sel = document.getElementById('tableSelect');
-              if (sel) sel.value = defaultName;
-          }
+          const defaultName = PT.tableNames.includes('入网检') ? '入网检' : (PT.tableNames.find(t => t !== null) ?? null);
+          if (defaultName) { const sel = document.getElementById('tableSelect'); if (sel) sel.value = defaultName; }
           rebuildPointMaps(defaultName);
-
           onDBLoaded(file.name, null);
-          
-        } catch (sqlErr) {
-          throw new Error('数据库解析失败：' + (sqlErr?.message || sqlErr));
-        }
+        } catch (sqlErr) { throw new Error('数据库解析失败：' + (sqlErr?.message || sqlErr)); }
         return;
       }
-      
-      // Handle JSON file
-      console.log('📄 检测到 JSON 文件，大小:', ev.target.result.length);
       const json = JSON.parse(ev.target.result);
-      console.log('✓ JSON 解析成功，格式检查...');
-      
       if (json.tables || json.yc || json.yx) {
-        dbData = normalizeDB(json);
-        onDBLoaded(file.name, dbData);
-      } else {
-        throw new Error('未识别的格式，需要包含 yc、yx 或 tables 字段');
-      }
+        dbData = normalizeDB(json); onDBLoaded(file.name, dbData);
+      } else { throw new Error('未识别的格式，需要包含 yc、yx 或 tables 字段'); }
     } catch(ex) {
-      console.error('❌ 加载失败:', ex.message);
       pill.className = 'db-pill err'; pill.textContent = '格式错误';
-      bar.className = 'db-bar err';
-      detail.textContent = ex.message;
+      bar.className = 'db-bar err'; detail.textContent = ex.message;
     }
   };
-  
-  // Read as appropriate format
-  if (ext === 'db' || ext === 'sqlite' || ext === 'sqlite3') {
-    reader.readAsArrayBuffer(file);
-  } else {
-    reader.readAsText(file, 'utf-8');
-  }
+  if (ext === 'db' || ext === 'sqlite' || ext === 'sqlite3') reader.readAsArrayBuffer(file);
+  else reader.readAsText(file, 'utf-8');
 }
 
 function normalizeDB(raw) {
-  // Support: {yc:{}, yx:{}, yk:{}, en:{}, para:{}} or {tables:{yc:[], ...}}
   const out = { yc:{}, yx:{}, yk:{}, en:{}, para:{}, tableNames:[] };
   if (raw.tables) {
-    // table-based: raw.tables = { "转发表1": { yc:[{addr,name}], yx:[], ... }, ... }
     out.tableNames = Object.keys(raw.tables);
-    // populate tableSelect
     populateTableSelect(out.tableNames);
-    // Default: flatten all
     for (const tname of out.tableNames) {
       const t = raw.tables[tname];
       for (const type of ['yc','yx','yk','en','para']) {
-        if (Array.isArray(t[type])) {
-          t[type].forEach(({addr, name}) => { if (addr != null) out[type][addr] = name; });
-        } else if (t[type] && typeof t[type] === 'object') {
-          Object.assign(out[type], t[type]);
-        }
+        if (Array.isArray(t[type])) t[type].forEach(({addr, name}) => { if (addr != null) out[type][addr] = name; });
+        else if (t[type] && typeof t[type] === 'object') Object.assign(out[type], t[type]);
       }
     }
     out._raw = raw;
   } else {
-    // Flat: {yc:{addr:name}, ...} or {yc:[{addr,name}], ...}
     for (const type of ['yc','yx','yk','en','para']) {
-      if (Array.isArray(raw[type])) {
-        raw[type].forEach(({addr, name}) => { if (addr != null) out[type][addr] = name; });
-      } else if (raw[type] && typeof raw[type] === 'object') {
-        Object.assign(out[type], raw[type]);
-      }
+      if (Array.isArray(raw[type])) raw[type].forEach(({addr, name}) => { if (addr != null) out[type][addr] = name; });
+      else if (raw[type] && typeof raw[type] === 'object') Object.assign(out[type], raw[type]);
     }
   }
   return out;
@@ -560,12 +527,7 @@ function normalizeDB(raw) {
 function populateTableSelect(names) {
   const sel = document.getElementById('tableSelect');
   sel.innerHTML = '<option value="">全点表（101默认）</option>';
-  names.forEach(n => {
-    const opt = document.createElement('option');
-    opt.value = n; opt.textContent = n;
-    sel.appendChild(opt);
-  });
-
+  names.forEach(n => { const opt = document.createElement('option'); opt.value = n; opt.textContent = n; sel.appendChild(opt); });
   sel.onchange = () => {
     const tname = sel.value;
     const tableName = (tname === '__null__' || tname === '') ? null : tname;
@@ -577,7 +539,6 @@ function populateTableSelect(names) {
 function applyTableSelect() {
   const sel = document.getElementById('tableSelect');
   if (!sel) return;
-
   const tname = sel.value;
   const tableName = (tname === '__null__' || tname === '') ? null : tname;
   rebuildPointMaps(tableName);
@@ -586,47 +547,37 @@ function applyTableSelect() {
 document.getElementById('tableSelect').addEventListener('change', applyTableSelect);
 
 function onDBLoaded(name, db) {
-  // PT.ok 在 rebuildPointMaps 中控制
   const bar = document.getElementById('dbBar');
   const pill = document.getElementById('dbPill');
   const detail = document.getElementById('dbDetail');
-  const ycN = PT.raw.yc.length;
-  const yxN = PT.raw.yx.length;
-  const ykN = PT.raw.yk.length;
+  const ycN = PT.raw.yc.length, yxN = PT.raw.yx.length, ykN = PT.raw.yk.length;
   const totalPoints = ycN + yxN + ykN;
-  console.log(`✅ 点表加载成功: yc=${ycN} yx=${yxN} yk=${ykN} 共=${totalPoints}`);
-
-  pill.className = 'db-pill ok';
-  pill.textContent = `已加载 ${totalPoints} 点`;
+  pill.className = 'db-pill ok'; pill.textContent = `已加载 ${totalPoints} 点`;
   bar.className = 'db-bar ok';
   detail.textContent = `${name}  遥测:${ycN} 遥信:${yxN} 遥控:${ykN}`;
   document.body.classList.add('has-db');
-  const dbInput = document.getElementById('dbFileInput');
-  if (dbInput) dbInput.value = '';
+  const dbInput = document.getElementById('dbFileInput'); if (dbInput) dbInput.value = '';
   if (parseResult) renderResult(parseResult);
 }
 
 function clearDB() {
-  dbData = null;
-  PT.ok = false;
-  PT.curTable = null;
-  PT.tableNames = [];
+  dbData = null; PT.ok = false; PT.curTable = null; PT.tableNames = [];
   PT.raw = { yc:[], yx:[], yk:[], en:[], para:[] };
+  const bar = document.getElementById('dbBar');
   const pill = document.getElementById('dbPill');
   const detail = document.getElementById('dbDetail');
   bar.className = 'db-bar';
   pill.className = 'db-pill none'; pill.textContent = '未加载';
   detail.textContent = '';
   document.getElementById('tableSelect').innerHTML = '<option value="">全点表（101默认）</option>';
-  const dbInput2 = document.getElementById('dbFileInput');
-  if (dbInput2) dbInput2.value = '';
+  const dbInput2 = document.getElementById('dbFileInput'); if (dbInput2) dbInput2.value = '';
   document.body.classList.remove('has-db');
   if (parseResult) renderResult(parseResult);
 }
 
 // ─── Log File Loading ───────────────────────────────────────
 const dropZone = document.getElementById('dropZone');
-const logInput = document.getElementById('logFileInput');
+const logFileInput = document.getElementById('logFileInput');
 
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
@@ -634,7 +585,7 @@ dropZone.addEventListener('drop', e => {
   e.preventDefault(); dropZone.classList.remove('drag');
   const f = e.dataTransfer.files[0]; if (f) loadLogFile(f);
 });
-logInput.addEventListener('change', e => { const f = e.target.files[0]; if (f) loadLogFile(f); });
+logFileInput.addEventListener('change', e => { const f = e.target.files[0]; if (f) loadLogFile(f); });
 
 function loadLogFile(file) {
   logFileName = file.name;
@@ -662,14 +613,12 @@ async function parseLog() {
   const inputText = document.getElementById('logInput').value.trim();
   const useInput = inputText.length > 0;
   const textToParse = useInput ? inputText : logText;
-  
   if (!textToParse) return;
   const btn = document.getElementById('parseBtn');
   const status = document.getElementById('parseStatus');
   btn.disabled = true; btn.textContent = '⏳ 解析中...';
   status.textContent = '';
   document.getElementById('errorBox').style.display = 'none';
-
   const proto = document.querySelector('input[name="proto"]:checked').value;
   try {
     const resp = await fetch('/parseLog', {
@@ -682,8 +631,6 @@ async function parseLog() {
     renderResult(parseResult);
     document.getElementById('downloadBtn').disabled = false;
     status.textContent = `✓ 解析完成 ${parseResult.lines.length} 行`;
-    
-    // 自适应设置默认表选择
     setDefaultTableBasedOnProtocol(parseResult);
   } catch(e) {
     document.getElementById('errorBox').textContent = '解析失败：' + e.message;
@@ -693,22 +640,54 @@ async function parseLog() {
   }
 }
 
+// ─── Time Highlight ──────────────────────────────────────────
+/**
+ * 在已转义的字符串中，给时间戳加高亮 span。
+ * 匹配格式：
+ *   YYYY/MM/DD-HH:MM:SS  （如 2026/03/19-08:49:05）
+ *   YYYY-MM-DD HH:MM:SS
+ *   HH:MM:SS.mmm
+ */
+function highlightTime(escapedStr) {
+  return escapedStr.replace(
+    /(\d{4}[\/\-]\d{2}[\/\-]\d{2}[-\s]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?|\d{2}:\d{2}:\d{2}(?:[.,]\d+)?)/g,
+    '<span class="time-hl">$1</span>'
+  );
+}
+
+// ─── Filter Debug Lines ───────────────────────────────────────
+function applyDebugFilter() {
+  const on = document.getElementById('filterDebugToggle').checked;
+  const label = document.getElementById('filterLabel');
+  // Update label active state
+  label.classList.toggle('active', on);
+  // Show/hide all debug lines
+  document.querySelectorAll('#output .debug-line').forEach(el => {
+    el.style.display = on ? 'none' : '';
+  });
+}
+
 // ─── Render ─────────────────────────────────────────────────
-function ptName(type, addr) {
+function ptName(type, addr, proto) {
   if (!PT.ok) return '';
   const n = Number(addr);
   if (Number.isNaN(n)) return '';
-  const isTransfer = (PT.curTable !== null && PT.curTable !== '全点表');
+  const is101 = String(proto || '').trim() === '101';
+  const useJoinTransfer = is101 && PT.follow101Transfer;
   switch (type) {
-    case 'yx':   return PT.switchYXPoint.get(isTransfer ? n          : n) ?? '';
-    case 'yc':   return PT.switchYCPoint.get(isTransfer ? n - 0x4000 : n) ?? '';
-    case 'yk':   return PT.switchYKPoint.get(isTransfer ? n - 0x6000 : n) ?? '';
-    case 'en':   return PT.switchENPoint.get(isTransfer ? n - 0x6400 : n) ?? '';
+    case 'yx':   return useJoinTransfer ? (PT.switchYXPoint.get(n) ?? '') : (is101 ? (PT.allYXPoint.get(n) ?? '') : (PT.switchYXPoint.get(n) ?? ''));
+    case 'yc':   return useJoinTransfer ? (PT.switchYCPoint.get(n) ?? '') : (is101 ? (PT.allYCPoint.get(n) ?? '') : (PT.switchYCPoint.get(n) ?? ''));
+    case 'yk':   return useJoinTransfer ? (PT.switchYKPoint.get(n) ?? '') : (is101 ? (PT.allYKPoint.get(n) ?? '') : (PT.switchYKPoint.get(n) ?? ''));
+    case 'en':   return useJoinTransfer ? (PT.switchENPoint.get(n) ?? '') : (is101 ? (PT.allENPoint.get(n) ?? '') : (PT.switchENPoint.get(n) ?? ''));
     case 'para': return PT.maps.para.get(n) ?? '';
     default: return '';
   }
 }
 
+function apply101FollowToggle() {
+  PT.follow101Transfer = document.getElementById('follow101Toggle').checked;
+  if (parseResult) renderResult(parseResult);
+}
 function esc(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -757,7 +736,6 @@ function renderResult(result) {
   const lines = result.lines || [];
   const out = document.getElementById('output');
 
-  // stats
   let nHex=0,nDbg=0,n104=0,n101=0,nYC=0,nYX=0,nCtrl=0,nFault=0,nEnergy=0;
   lines.forEach(l => {
     if (l.type === 'hex') {
@@ -791,7 +769,8 @@ function renderResult(result) {
   lines.forEach((line, idx) => {
     if (line.type === 'empty') return;
     if (line.type === 'debug') {
-      html.push(`<div class="debug-line">${esc(line.raw)}</div>`);
+      // 对 raw 先转义，再高亮时间
+      html.push(`<div class="debug-line">${highlightTime(esc(line.raw))}</div>`);
       return;
     }
     if (line.type === 'hex') {
@@ -803,7 +782,7 @@ function renderResult(result) {
       <div class="hex-block" id="${id}">
         <div class="hex-header" onclick="toggleBlock('${id}')">
           ${db}${pb}
-          <span class="hex-raw">${esc(line.prefix||'')} <span class="frame-summary">${esc(line.hexStr||'')}</span></span>
+          <span class="hex-raw">${highlightTime(esc(line.prefix||''))} <span class="frame-summary">${esc(line.hexStr||'')}</span></span>
           <span class="frame-summary">${framesSummary}</span>
           <span class="hex-chevron">▾</span>
         </div>
@@ -816,6 +795,9 @@ function renderResult(result) {
   });
 
   out.innerHTML = html.join('') || '<div class="empty-hint">无可显示内容</div>';
+
+  // 渲染完成后立即应用当前过滤状态
+  applyDebugFilter();
 }
 
 function summarizeFrames(frames) {
@@ -853,24 +835,14 @@ function renderFrame(f, idx, proto) {
     return `<div class="frame-error">⚠ ${esc(f.error)}</div>`;
   }
 
-  if (f.type === 'yc') {
-    body = renderYC(f, proto);
-  } else if (f.type === 'yx' || f.type === 'soe') {
-    body = renderYX(f, proto);
-  } else if (f.type === 'control') {
-    body = renderCtrl(f, proto);
-  } else if (f.type === 'fault') {
-    body = renderFault(f, proto);
-  } else if (f.type === 'energy') {
-    body = renderEnergy(f, proto);
-  } else if (f.type === 'link_frame') {
-    body = renderLinkFrame(f);
-  } else if (f.type === 'param') {
-    body = renderParam(f, proto);
-  } else {
-    // Generic: show JSON
-    body = `<div class="frame-json">${esc(JSON.stringify(f, null, 2))}</div>`;
-  }
+  if (f.type === 'yc') body = renderYC(f, proto);
+  else if (f.type === 'yx' || f.type === 'soe') body = renderYX(f, proto);
+  else if (f.type === 'control') body = renderCtrl(f, proto);
+  else if (f.type === 'fault') body = renderFault(f, proto);
+  else if (f.type === 'energy') body = renderEnergy(f, proto);
+  else if (f.type === 'link_frame') body = renderLinkFrame(f);
+  else if (f.type === 'param') body = renderParam(f, proto);
+  else body = `<div class="frame-json">${highlightTime(esc(JSON.stringify(f, null, 2)))}</div>`;
 
   const countStr = f.data ? ` <small class="frame-count">(${f.data.length}条)</small>` : '';
 
@@ -886,10 +858,9 @@ function renderFrame(f, idx, proto) {
   </div>`;
 }
 
-// ── YC ──────────────────────────────────────────────────────
 function renderYC(f, proto) {
   const rows = (f.data||[]).map((item, i) => {
-    const name = ptName('yc', item.addr);
+    const name = ptName('yc', item.addr, proto);
     return `<tr>
       <td>${i+1}</td>
       <td>${item.addr??''}</td>
@@ -897,7 +868,7 @@ function renderYC(f, proto) {
       <td class="col-name"><span class="${name?'pname':'pname-none'}">${esc(name)||'—'}</span></td>
       <td>${esc(String(item.value??''))}</td>
       <td>${esc(item.quality||item.qds||'')}</td>
-      <td>${esc(item.time||item.timestamp||'')}</td>
+      <td>${highlightTime(esc(item.time||item.timestamp||''))}</td>
     </tr>`;
   }).join('');
   return `<table><thead><tr>
@@ -907,18 +878,17 @@ function renderYC(f, proto) {
   </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-// ── YX / SOE ─────────────────────────────────────────────────
 function renderYX(f, proto) {
   const rows = (f.data||[]).map((item, i) => {
     const addr = item.addrDec ?? item.addr;
-    const name = ptName('yx', addr);
+    const name = ptName('yx', addr, proto);
     return `<tr>
       <td>${i+1}</td>
       <td>${addr??''}</td>
       <td class="mono">${addrHex(addr, proto)}</td>
       <td class="col-name"><span class="${name?'pname':'pname-none'}">${esc(name)||'—'}</span></td>
       <td>${esc(item.state??'')}</td>
-      <td>${esc(item.time||item.timestamp||'')}</td>
+      <td>${highlightTime(esc(item.time||item.timestamp||''))}</td>
     </tr>`;
   }).join('');
   return `<table><thead><tr>
@@ -928,20 +898,19 @@ function renderYX(f, proto) {
   </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-// ── Fault ─────────────────────────────────────────────────────
 function renderFault(f, proto) {
   let html = '';
   if ((f.yx||[]).length) {
     html += '<div class="frame-block-header">📍 遥信</div>';
     const rows = f.yx.map((item,i) => {
-      const name = ptName('yx', item.point);
+      const name = ptName('yx', item.point, proto);
       return `<tr>
         <td>${i+1}</td>
         <td>${item.point??''}</td>
         <td class="mono">${addrHex(item.point, proto)}</td>
         <td class="col-name"><span class="${name?'pname':'pname-none'}">${esc(name)||'—'}</span></td>
         <td>${esc(item.state??'')}</td>
-        <td>${esc(item.time||'')}</td>
+        <td>${highlightTime(esc(item.time||''))}</td>
       </tr>`;
     }).join('');
     html += `<table><thead><tr><th>#</th><th>地址(dec)</th><th>地址(hex)</th><th class="col-name">点名</th><th>状态</th><th>时标</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -949,27 +918,26 @@ function renderFault(f, proto) {
   if ((f.yc||[]).length) {
     html += '<div class="frame-block-header">📊 遥测</div>';
     const rows = f.yc.map((item,i) => {
-      const name = ptName('yc', item.addr||item.point);
+      const name = ptName('yc', item.addr||item.point, proto);
       return `<tr>
         <td>${i+1}</td>
         <td>${item.addr??item.point??''}</td>
         <td class="mono">${addrHex(item.addr??item.point, proto)}</td>
         <td class="col-name"><span class="${name?'pname':'pname-none'}">${esc(name)||'—'}</span></td>
         <td>${esc(String(item.value??''))}</td>
-        <td>${esc(item.time||item.timestamp||'')}</td>
+        <td>${highlightTime(esc(item.time||item.timestamp||''))}</td>
       </tr>`;
     }).join('');
     html += `<table><thead><tr><th>#</th><th>地址(dec)</th><th>地址(hex)</th><th class="col-name">点名</th><th>值</th><th>时标</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
-  if (!html) html = `<div class="frame-json">${esc(JSON.stringify(f,null,2))}</div>`;
+  if (!html) html = `<div class="frame-json">${highlightTime(esc(JSON.stringify(f,null,2)))}</div>`;
   return html;
 }
 
-// ── Control ───────────────────────────────────────────────────
 function renderCtrl(f, proto) {
   const rows = (f.data||[]).map((item,i) => {
     const addrDec = parseInt(String(item.addr||'').replace(/^0x/i,''),16);
-    const name = ptName('yk', isNaN(addrDec)?item.addr:addrDec);
+    const name = ptName('yk', isNaN(addrDec)?item.addr:addrDec, proto);
     return `<tr>
       <td>${i+1}</td>
       <td class="mono">${esc(item.addr??'')}</td>
@@ -986,17 +954,16 @@ function renderCtrl(f, proto) {
   </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-// ── Energy ────────────────────────────────────────────────────
 function renderEnergy(f, proto) {
   const rows = (f.data||[]).map((item,i) => {
-    const name = ptName('en', item.addr);
+    const name = ptName('en', item.addr, proto);
     return `<tr>
       <td>${i+1}</td>
       <td>${item.addr??''}</td>
       <td class="mono">${addrHex(item.addr,proto)}</td>
       <td class="col-name"><span class="${name?'pname':'pname-none'}">${esc(name)||'—'}</span></td>
       <td>${typeof item.value==='number'?item.value.toFixed(3):esc(String(item.value??''))}</td>
-      <td>${esc(item.time||'')}</td>
+      <td>${highlightTime(esc(item.time||''))}</td>
     </tr>`;
   }).join('');
   return `<table><thead><tr>
@@ -1006,11 +973,10 @@ function renderEnergy(f, proto) {
   </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-// ── Param ─────────────────────────────────────────────────────
 function renderParam(f, proto) {
   const rows = (f.data||[]).map((item,i) => {
     const addrNum = parseInt(String(item.addr||'').replace(/^0x/i,''),16);
-    const name = ptName('para', isNaN(addrNum)?item.addr:addrNum);
+    const name = ptName('para', isNaN(addrNum)?item.addr:addrNum, proto);
     return `<tr>
       <td>${i+1}</td>
       <td class="mono">${esc(item.addr??'')}</td>
@@ -1026,25 +992,23 @@ function renderParam(f, proto) {
   </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-// ── Link Frame ────────────────────────────────────────────────
 function renderLinkFrame(f) {
+  const ht = s => highlightTime(esc(s));
   return `<div class="link-frame">
-    链路地址: ${esc(String(f.linkAddr??'—'))}
-    帧类型: ${esc(f.frameType||'—')}
-    方向: ${esc(f.ctrl?.direction||'—')}
-    功能码: ${esc(String(f.ctrl?.fc??'—'))} ${esc(f.ctrl?.fcName||'')}
+    链路地址: ${ht(String(f.linkAddr??'—'))}
+    帧类型: ${ht(f.frameType||'—')}
+    方向: ${ht(f.ctrl?.direction||'—')}
+    功能码: ${ht(String(f.ctrl?.fc??'—'))} ${ht(f.ctrl?.fcName||'')}
     校验: ${f.csValid?'✓':'✗'}
   </div>`;
 }
 
-// ─── Toggle collapse ─────────────────────────────────────────
 function toggleBlock(id) {
   const el = document.getElementById(id);
   if (!el) return;
   el.classList.toggle('collapsed');
 }
 
-// ─── Clear ───────────────────────────────────────────────────
 function clearAll() {
   logText = ''; logFileName = ''; parseResult = null;
   document.getElementById('logInput').value = '';
@@ -1063,47 +1027,41 @@ function clearAll() {
 
 function setDefaultTableBasedOnProtocol(parseResult) {
   if (!PT.ok || !PT.tableNames.length) return;
-  
-  // 统计协议类型
   const protocols = {};
   parseResult.lines.forEach(line => {
-    if (line.type === 'hex' && line.protocol) {
-      protocols[line.protocol] = (protocols[line.protocol] || 0) + 1;
-    }
+    if (line.type === 'hex' && line.protocol) protocols[line.protocol] = (protocols[line.protocol] || 0) + 1;
   });
-  
-  // 找出主要协议
-  let mainProto = null;
-  let maxCount = 0;
+  let mainProto = null, maxCount = 0;
   for (const [proto, count] of Object.entries(protocols)) {
-    if (count > maxCount) {
-      maxCount = count;
-      mainProto = proto;
-    }
+    if (count > maxCount) { maxCount = count; mainProto = proto; }
   }
-  
   if (!mainProto) return;
-  
   const sel = document.getElementById('tableSelect');
   if (!sel) return;
-  
+
+  // 已经有手动选了表则不改
+  if (sel.value) return;
+
   let defaultTable = '';
+
   if (mainProto === '101') {
-    // 101 默认全点表
-    defaultTable = '';
+    // 101 下默认全点表，除非用户已主动开 101 转发选项后手动选表
+    if (PT.follow101Transfer && PT.curTable) {
+      defaultTable = PT.curTable;
+    } else {
+      defaultTable = '';
+    }
   } else if (mainProto === '104') {
-    // 104 默认抓发表，优先入网检
     defaultTable = PT.tableNames.includes('入网检') ? '入网检' : (PT.tableNames[0] || '');
   }
-  
+
   if (defaultTable !== sel.value) {
     sel.value = defaultTable;
-    rebuildPointMaps(defaultTable || null);
+    rebuildPointMaps(defaultTable ? defaultTable : null);
     if (parseResult) renderResult(parseResult);
   }
 }
 
-// ─── Download parsed log ─────────────────────────────────────
 function downloadLog() {
   if (!parseResult) return;
   const lines = parseResult.lines || [];
@@ -1114,10 +1072,7 @@ function downloadLog() {
     if (line.type === 'debug') { parts.push(line.raw); return; }
     if (line.type !== 'hex') { parts.push(line.raw); return; }
 
-    // Original line
     parts.push(line.raw);
-
-    // Append parsed frames summary
     const proto = line.protocol || '104';
     parts.push(`  {${proto}}`);
 
@@ -1137,38 +1092,38 @@ function downloadLog() {
       if (f.type === 'yc') {
         parts.push(`  #\t协议\t地址(dec)\t地址(hex)\t点名\t值\t时标`);
         (f.data||[]).forEach((item,i) => {
-          const name = ptName('yc', item.addr) || '—';
+          const name = ptName('yc', item.addr, line.protocol || proto) || '—';
           parts.push(`  ${i+1}\t${proto}\t${item.addr??''}\t${addrHex(item.addr,proto)}\t${name}\t${item.value??''}\t${item.time||''}`);
         });
       } else if (f.type === 'yx' || f.type === 'soe') {
         parts.push(`  #\t协议\t地址(dec)\t地址(hex)\t点名\t状态\t触发时间`);
         (f.data||[]).forEach((item,i) => {
           const addr = item.addrDec ?? item.addr;
-          const name = ptName('yx', addr) || '—';
+          const name = ptName('yx', addr, line.protocol || proto) || '—';
           parts.push(`  ${i+1}\t${proto}\t${addr??''}\t${addrHex(addr,proto)}\t${name}\t${item.state??''}\t${item.time||item.timestamp||''}`);
         });
       } else if (f.type === 'control') {
         parts.push(`  #\t协议\t地址\t点名\t状态\t操作\t结果`);
         (f.data||[]).forEach((item,i) => {
           const addrDec = parseInt(String(item.addr||'').replace(/^0x/i,''),16);
-          const name = ptName('yk', isNaN(addrDec)?item.addr:addrDec) || '—';
+          const name = ptName('yk', isNaN(addrDec)?item.addr:addrDec, line.protocol || proto) || '—';
           parts.push(`  ${i+1}\t${proto}\t${item.addr??''}\t${name}\t${item.state??''}\t${item.operation??''}\t${item.return??''}`);
         });
       } else if (f.type === 'fault') {
         (f.yx||[]).forEach((item,i) => {
           if (i===0) parts.push(`  #\t协议\t地址(dec)\t点名\t状态\t时标  [遥信]`);
-          const name = ptName('yx', item.point) || '—';
+          const name = ptName('yx', item.point, line.protocol || proto) || '—';
           parts.push(`  ${i+1}\t${proto}\t${item.point??''}\t${name}\t${item.state??''}\t${item.time||''}`);
         });
         (f.yc||[]).forEach((item,i) => {
           if (i===0) parts.push(`  #\t协议\t地址(dec)\t点名\t值\t时标  [遥测]`);
-          const name = ptName('yc', item.addr||item.point) || '—';
+          const name = ptName('yc', item.addr||item.point, line.protocol || proto) || '—';
           parts.push(`  ${i+1}\t${proto}\t${item.addr??item.point??''}\t${name}\t${item.value??''}\t${item.time||''}`);
         });
       } else if (f.type === 'energy') {
         parts.push(`  #\t协议\t地址(dec)\t地址(hex)\t点名\t值\t时标`);
         (f.data||[]).forEach((item,i) => {
-          const name = ptName('en', item.addr) || '—';
+          const name = ptName('en', item.addr, line.protocol || proto) || '—';
           const val = typeof item.value==='number' ? item.value.toFixed(3) : (item.value??'');
           parts.push(`  ${i+1}\t${proto}\t${item.addr??''}\t${addrHex(item.addr,proto)}\t${name}\t${val}\t${item.time||''}`);
         });
@@ -1192,39 +1147,28 @@ function downloadLog() {
 function initializeTheme() {
     const html = document.documentElement;
     const savedTheme = localStorage.getItem('theme');
-    
     let theme = savedTheme;
     if (!theme) {
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         theme = prefersDark ? 'dark' : 'light';
     }
-    
     applyTheme(theme);
     setupThemeToggle();
-    
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-        if (!localStorage.getItem('theme')) {
-            applyTheme(e.matches ? 'dark' : 'light');
-        }
+        if (!localStorage.getItem('theme')) applyTheme(e.matches ? 'dark' : 'light');
     });
 }
 
 function applyTheme(theme) {
     const html = document.documentElement;
-    if (theme === 'dark') {
-        html.classList.add('dark-theme');
-        html.classList.remove('light-theme');
-    } else {
-        html.classList.add('light-theme');
-        html.classList.remove('dark-theme');
-    }
+    if (theme === 'dark') { html.classList.add('dark-theme'); html.classList.remove('light-theme'); }
+    else { html.classList.add('light-theme'); html.classList.remove('dark-theme'); }
 }
 
 function toggleTheme() {
     const html = document.documentElement;
     const isDark = html.classList.contains('dark-theme');
     const newTheme = isDark ? 'light' : 'dark';
-    
     localStorage.setItem('theme', newTheme);
     applyTheme(newTheme);
     updateThemeButton();
@@ -1232,13 +1176,7 @@ function toggleTheme() {
 
 function setupThemeToggle() {
     const btn = document.getElementById('themeToggle');
-    if (btn) {
-        btn.onclick = (e) => {
-            e.preventDefault();
-            toggleTheme();
-        };
-        updateThemeButton();
-    }
+    if (btn) { btn.onclick = (e) => { e.preventDefault(); toggleTheme(); }; updateThemeButton(); }
 }
 
 function updateThemeButton() {
@@ -1249,9 +1187,7 @@ function updateThemeButton() {
 }
 
 document.addEventListener('DOMContentLoaded', initializeTheme);
-if (document.readyState !== 'loading') {
-    initializeTheme();
-}
+if (document.readyState !== 'loading') initializeTheme();
 </script>
 </body>
 </html>
