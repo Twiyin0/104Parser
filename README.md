@@ -114,11 +114,22 @@ SSH_PORT=22
 
 ## Changelog
 
-### [1.1.4] - 2026-03-29
+### [1.1.4] - 2026-03-30
+
+**新增功能**
+- 🖥️ **Electron 桌面客户端支持**
+  - 合并 Electron 分支，master 同时支持 Web 服务和桌面 exe 两种运行方式
+  - 自定义无边框标题栏（最小化 / 最大化 / 关闭按钮）
+  - 标题栏仅在 Electron 环境下显示，浏览器访问不受影响
+  - 新增 `electron/main.js`、`electron/preload.js`
+
+- 🤖 **GitHub Actions 自动构建**
+  - push 到 master 自动构建 Windows exe（portable）
+  - 打 `v*` tag 自动创建 GitHub Release 并附上安装包
 
 **改进**
-- **修复逻辑问题**
-  - 修复fileParser解析点名的逻辑
+- 🔧 `src/server.js` 支持 `require()` 导入（供 Electron 主进程调用）
+- 📦 `package.json` 加入 electron-builder 构建配置
 
 ### [1.1.3] - 2026-03-29
 

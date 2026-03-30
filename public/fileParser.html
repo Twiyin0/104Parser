@@ -6,8 +6,20 @@
 <title>Log文件解析器 · IEC 104/101</title>
 <style>
 :root{--bg-primary:#f1f5f9;--bg-secondary:#ffffff;--bg-tertiary:#f8fafc;--text-primary:#0f172a;--text-secondary:#475569;--text-tertiary:#64748b;--border-color:#cbd5e1;--border-light:#e2e8f0;--hover-bg:#f1f5f9;--input-bg:#f8fafc;--accent-primary:#2563eb;--accent-secondary:#7c3aed;--success-bg:#f0fdf4;--warn-bg:#fffbeb;--danger-bg:#fef2f2;--panel-bg:#f8fafc;--error-bg:#fee2e2;--error-text:#b91c1c;--card-bg:#ffffff;--tag-bg:#e0f2fe;--tag-color:#1d4ed8;--tag-yc-bg:#fce7f3;--tag-yc-text:#9d174d;--tag-yx-bg:#d1fae5;--tag-yx-text:#065f46;--tag-ctrl-bg:#fef3c7;--tag-ctrl-text:#92400e;--tag-fault-bg:#fee2e2;--tag-fault-text:#991b1b;--tag-energy-bg:#ede9fe;--tag-energy-text:#4c1d95;--tag-total-bg:#e0f2fe;--tag-total-text:#0369a1;--tag-proto104-bg:#dbeafe;--tag-proto104-text:#1d4ed8;--tag-proto101-bg:#cffafe;--tag-proto101-text:#0e7490;--tag-link-bg:#f3f4f6;--tag-link-text:#374151;--tag-test-bg:#ecfdf5;--tag-test-text:#065f46;--tag-other-bg:#f3f4f6;--tag-other-text:#4b5563;--dir-tx-bg:#bfdbfe;--dir-tx-text:#1e40af;--dir-rx-bg:#bbf7d0;--dir-rx-text:#14532d;--row-bg:#eff6ff;--row-border:#e2e8f0;--success-text:#065f46;--warn-text:#92400e;--danger-text:#991b1b;--muted:#94a3b8;--link-text:#1d4ed8} @media (prefers-color-scheme:dark){:root{--bg-primary:#0f172a;--bg-secondary:#1e293b;--bg-tertiary:#334155;--text-primary:#f1f5f9;--text-secondary:#cbd5e1;--text-tertiary:#94a3b8;--border-color:#475569;--border-light:#334155;--hover-bg:#334155;--input-bg:#1e293b;--accent-primary:#60a5fa;--accent-secondary:#c084fc;--success-bg:#0f766e;--warn-bg:#92400e;--danger-bg:#881337;--panel-bg:#1e293b;--error-bg:#42181f;--error-text:#fda4af;--card-bg:#1e293b;--tag-bg:#1e293b;--tag-color:#93c5fd;--row-bg:#1e293b;--row-border:#334155;--success-text:#2dd4bf;--warn-text:#f59e0b;--danger-text:#fda4af;--muted:#94a3b8;--link-text:#93c5fd}}html.dark-theme{--bg-primary:#0f172a;--bg-secondary:#1e293b;--bg-tertiary:#334155;--text-primary:#f1f5f9;--text-secondary:#cbd5e1;--text-tertiary:#94a3b8;--border-color:#475569;--border-light:#334155;--hover-bg:#334155;--input-bg:#1e293b;--accent-primary:#60a5fa;--accent-secondary:#c084fc;--success-bg:#0f766e;--warn-bg:#92400e;--danger-bg:#881337;--panel-bg:#1e293b;--error-bg:#42181f;--error-text:#fda4af;--card-bg:#1e293b;--tag-bg:#1e293b;--tag-color:#93c5fd;--row-bg:#1e293b;--row-border:#334155;--success-text:#2dd4bf;--warn-text:#f59e0b;--danger-text:#fda4af;--muted:#94a3b8;--link-text:#93c5fd}html.light-theme{--bg-primary:#f1f5f9;--bg-secondary:#ffffff;--bg-tertiary:#f8fafc;--text-primary:#0f172a;--text-secondary:#475569;--text-tertiary:#64748b;--border-color:#cbd5e1;--border-light:#e2e8f0;--hover-bg:#f1f5f9;--input-bg:#f8fafc;--accent-primary:#2563eb;--accent-secondary:#7c3aed;--success-bg:#f0fdf4;--warn-bg:#fffbeb;--danger-bg:#fef2f2;--panel-bg:#f8fafc;--error-bg:#fee2e2;--error-text:#b91c1c;--card-bg:#ffffff;--tag-bg:#e0f2fe;--tag-color:#1d4ed8;--row-bg:#eff6ff;--row-border:#e2e8f0;--success-text:#065f46;--warn-text:#92400e;--danger-text:#991b1b;--muted:#94a3b8;--link-text:#1d4ed8}
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-track{background:var(--bg-tertiary);border-radius:999px}
+*::-webkit-scrollbar-thumb{background:var(--border-color);border-radius:999px;border:2px solid var(--bg-secondary)}
+*::-webkit-scrollbar-thumb:hover{background:#94a3b8}
+.titlebar{position:fixed;top:0;left:0;right:0;height:36px;display:flex;align-items:center;padding:0 10px;background:var(--bg-secondary);border-bottom:1px solid var(--border-light);-webkit-app-region:drag;z-index:999}
+.titlebar .title{font-weight:700;color:var(--text-primary);user-select:none}
+.titlebar .window-controls{margin-left:auto;display:flex;gap:4px}
+.window-controls button{width:42px;height:30px;display:flex;align-items:center;justify-content:center;border:none;border-radius:6px;background:transparent;color:var(--text-secondary);font-size:.85rem;cursor:pointer;-webkit-app-region:no-drag}
+.window-controls button:hover{background:var(--hover-bg)}
+.window-controls .close:hover{background:#fee2e2;color:#dc2626}
+html:not(.electron) .titlebar{display:none}
+html:not(.electron) body{padding-top:20px}
 *{box-sizing:border-box}
-body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:var(--bg-primary);margin:0;padding:20px;min-height:100vh;color:var(--text-primary);transition:background-color .3s,color .3s}
+body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:var(--bg-primary);margin:0;padding:64px 20px 20px;min-height:100vh;color:var(--text-primary);transition:background-color .3s,color .3s}
 .container{max-width:1700px;margin:0 auto;background:var(--bg-secondary);border-radius:20px;box-shadow:0 20px 40px -8px rgba(0,0,0,.12);padding:28px;transition:background-color .3s}
 
 /* header */
@@ -230,6 +242,14 @@ html.dark-theme .time-hl{background:#451a03;color:#fcd34d;border:1px solid #7835
 </head>
 <body>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+<div class="titlebar">
+    <div class="title">IEC104Parser</div>
+    <div class="window-controls">
+        <button id="min-btn" aria-label="最小化">─</button>
+        <button id="max-btn" aria-label="最大化">▢</button>
+        <button id="close-btn" class="close" aria-label="关闭">✕</button>
+    </div>
+</div>
 <div class="container">
   <h1>📄 Log 文件解析器 <span class="badge">104</span><span class="badge badge-101">101</span><span class="badge badge-log">LOG</span>
     <button id="themeToggle" class="theme-toggle" style="margin-left:auto">🌙 暗色</button>
@@ -1209,8 +1229,43 @@ function updateThemeButton() {
     btn.innerHTML = isDark ? '☀️ 亮色' : '🌙 暗色';
 }
 
-document.addEventListener('DOMContentLoaded', initializeTheme);
-if (document.readyState !== 'loading') initializeTheme();
+function initializeWindowControls() {
+    const minBtn = document.getElementById('min-btn');
+    const maxBtn = document.getElementById('max-btn');
+    const closeBtn = document.getElementById('close-btn');
+
+    if (!window.windowControls) return;
+    document.documentElement.classList.add('electron');
+
+    minBtn?.addEventListener('click', () => window.windowControls.minimize());
+    closeBtn?.addEventListener('click', () => window.windowControls.close());
+
+    const updateMaxButton = (isMaximized) => {
+        if (maxBtn) maxBtn.textContent = isMaximized ? '❐' : '▢';
+    };
+
+    maxBtn?.addEventListener('click', async () => {
+        window.windowControls.maximize();
+        const maximized = await window.windowControls.isMaximized();
+        updateMaxButton(maximized);
+    });
+
+    window.windowControls.onMaximize(() => updateMaxButton(true));
+    window.windowControls.onUnmaximize(() => updateMaxButton(false));
+
+    window.windowControls.isMaximized().then(updateMaxButton);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initializeTheme();
+    setupThemeToggle();
+    initializeWindowControls();
+});
+if (document.readyState !== 'loading') {
+    initializeTheme();
+    setupThemeToggle();
+    initializeWindowControls();
+}
 </script>
 </body>
 </html>

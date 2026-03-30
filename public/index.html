@@ -59,10 +59,34 @@
             --input-bg: #f8fafc;
         }
 
+        /* 统一滚动条样式 */
+        *::-webkit-scrollbar { width: 10px; height: 10px; }
+        *::-webkit-scrollbar-track { background: var(--bg-tertiary); border-radius: 999px; }
+        *::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 999px; border: 2px solid var(--bg-secondary); }
+        *::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .titlebar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 36px; display: flex; align-items: center; padding: 0 10px;
+            background: var(--bg-secondary); border-bottom: 1px solid var(--border-light);
+            -webkit-app-region: drag; z-index: 999;
+        }
+        .titlebar .title { font-weight: 700; color: var(--text-primary); user-select: none; }
+        .titlebar .window-controls { margin-left: auto; display: flex; gap: 4px; }
+        .window-controls button {
+            width: 42px; height: 30px; display: flex; align-items: center; justify-content: center;
+            border: none; border-radius: 6px; background: transparent; color: var(--text-secondary);
+            font-size: 0.85rem; cursor: pointer; -webkit-app-region: no-drag;
+        }
+        .window-controls button:hover { background: var(--hover-bg); }
+        .window-controls .close:hover { background: #fee2e2; color: #dc2626; }
+        html:not(.electron) .titlebar { display: none; }
+        html:not(.electron) body { padding-top: 20px; }
+
         * { box-sizing: border-box; }
         body {
             font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-            background: var(--bg-primary); margin: 0; padding: 20px;
+            background: var(--bg-primary); margin: 0; padding: 64px 20px 20px;
             display: flex; justify-content: center;
             color: var(--text-primary);
             transition: background-color 0.3s, color 0.3s;
@@ -266,6 +290,14 @@
     </style>
 </head>
 <body id="root">
+<div class="titlebar">
+    <div class="title">IEC104Parser</div>
+    <div class="window-controls">
+        <button id="min-btn" aria-label="最小化">─</button>
+        <button id="max-btn" aria-label="最大化">▢</button>
+        <button id="close-btn" class="close" aria-label="关闭">✕</button>
+    </div>
+</div>
 <div class="container">
     <h1>⚡ 104/101规约解析器 <span class="badge">104</span><span class="badge badge-101">101</span>
       <button id="themeToggle" class="theme-toggle" style="margin-left:auto">🌙 暗色</button>
@@ -1100,10 +1132,42 @@ function updateThemeButton() {
     btn.innerHTML = isDark ? '☀️ 亮色' : '🌙 暗色';
 }
 
-// 页面加载时初始化主题
-document.addEventListener('DOMContentLoaded', initializeTheme);
+// 窗口控制按钮初始化
+function initializeWindowControls() {
+    const minBtn = document.getElementById('min-btn');
+    const maxBtn = document.getElementById('max-btn');
+    const closeBtn = document.getElementById('close-btn');
+
+    if (!window.windowControls) return;
+    document.documentElement.classList.add('electron');
+
+    minBtn?.addEventListener('click', () => window.windowControls.minimize());
+    closeBtn?.addEventListener('click', () => window.windowControls.close());
+
+    const updateMaxButton = (isMaximized) => {
+        if (maxBtn) maxBtn.textContent = isMaximized ? '❐' : '▢';
+    };
+
+    maxBtn?.addEventListener('click', async () => {
+        window.windowControls.maximize();
+        const maximized = await window.windowControls.isMaximized();
+        updateMaxButton(maximized);
+    });
+
+    window.windowControls.onMaximize(() => updateMaxButton(true));
+    window.windowControls.onUnmaximize(() => updateMaxButton(false));
+
+    window.windowControls.isMaximized().then(updateMaxButton);
+}
+
+// 页面加载时初始化主题和窗口按钮
+document.addEventListener('DOMContentLoaded', () => {
+    initializeTheme();
+    initializeWindowControls();
+});
 if (document.readyState !== 'loading') {
     initializeTheme();
+    initializeWindowControls();
 }
 </script>
 </body>

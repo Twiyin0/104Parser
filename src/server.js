@@ -104,6 +104,12 @@ app.post('/parseLog', express.json({ limit: '100mb' }), (req, res) => {
 });
 
 const PORT = process.env.PORT || 33104;
-app.listen(PORT, () => {
-    console.log(`104/101 双协议解析器运行在 http://localhost:${PORT}`);
-});
+
+// 如果是直接运行此文件，则启动服务器
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`104/101 双协议解析器运行在 http://localhost:${PORT}`);
+    });
+}
+
+module.exports = app;

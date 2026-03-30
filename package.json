@@ -1,13 +1,18 @@
 {
+  "$schema": "https://json.schemastore.org/package.json",
   "name": "104-parser",
   "version": "1.1.4",
   "description": "IEC 60870-5-104 规约解析器",
-  "main": "server.js",
+  "main": "electron/main.js",
+  "homepage": "./",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "dev:debug": "nodemon --inspect src/server.js",
-    "upload": "node upload/upload.js"
+    "upload": "node upload/upload.js",
+    "electron": "electron .",
+    "build": "electron-builder",
+    "dist": "electron-builder --publish=never"
   },
   "keywords": [
     "104",
@@ -23,6 +28,33 @@
     "ssh2": "^1.17.0"
   },
   "devDependencies": {
+    "electron": "^41.1.0",
+    "electron-builder": "^26.8.1",
     "nodemon": "^3.0.1"
+  },
+  "build": {
+    "appId": "com.iec104parser.app",
+    "productName": "IEC104Parser",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "electron/**/*",
+      "public/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "electronDist": "./node_modules/electron/dist",
+    "win": {
+      "target": "portable",
+      "icon": "public/favicon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "buildDependenciesFromSource": false,
+    "npmRebuild": false
   }
 }
