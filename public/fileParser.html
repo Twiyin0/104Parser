@@ -392,6 +392,10 @@ const PT = {
   switchYCPoint : new Map(),
   switchYKPoint : new Map(),
   switchENPoint : new Map(),
+  addrToSwitchYX : new Map(),  // 101转发：Addr → SwitchName
+  addrToSwitchYC : new Map(),
+  addrToSwitchYK : new Map(),
+  addrToSwitchEN : new Map(),
   allYXPoint : new Map(),
   allYCPoint : new Map(),
   allYKPoint : new Map(),
@@ -407,22 +411,24 @@ const PT = {
 function rebuildPointMaps(tableName) {
     PT.curTable = tableName;
     const isTransfer = (tableName !== null && tableName !== '全点表');
+
+    // 全量 Addr→Name（不过滤TableName，供101无转发时使用）
     const buildAllMap = (rows) => {
         const m = new Map();
         for (const r of rows) {
-            const key  = (r.Addr != null ? Number(r.Addr) : null);
-            const name = (r.Name ? String(r.Name).trim() : '');
+            const key  = r.Addr != null ? Number(r.Addr) : null;
+            const name = r.Name ? String(r.Name).trim() : '';
             if (key != null && key > 0 && name) m.set(key, name);
         }
         return m;
     };
+
+    // 104用：转发表 SwitchPoint→SwitchName，全点表 Addr→Name
     const buildSwitchMap = (rows) => {
         const m = new Map();
         for (const r of rows) {
-            if (tableName !== null && tableName !== '全点表') {
-                if ((r.TableName ?? null) !== tableName) continue;
-            }
-            const key = isTransfer
+            if (isTransfer && (r.TableName ?? null) !== tableName) continue;
+            const key  = isTransfer
                 ? (r.SwitchPoint != null ? Number(r.SwitchPoint) : null)
                 : (r.Addr        != null ? Number(r.Addr)        : null);
             const name = isTransfer
@@ -432,6 +438,20 @@ function rebuildPointMaps(tableName) {
         }
         return m;
     };
+
+    // 101转发用：Addr→SwitchName（只取选定转发表的行）
+    const buildAddrToSwitch = (rows) => {
+        const m = new Map();
+        if (!isTransfer) return m;
+        for (const r of rows) {
+            if ((r.TableName ?? null) !== tableName) continue;
+            const key  = r.Addr != null ? Number(r.Addr) : null;
+            const name = r.SwitchName ? String(r.SwitchName).trim() : '';
+            if (key != null && key > 0 && name) m.set(key, name);
+        }
+        return m;
+    };
+
     PT.allYXPoint = buildAllMap(PT.raw.yx);
     PT.allYCPoint = buildAllMap(PT.raw.yc);
     PT.allYKPoint = buildAllMap(PT.raw.yk);
@@ -441,6 +461,11 @@ function rebuildPointMaps(tableName) {
     PT.switchYCPoint = buildSwitchMap(PT.raw.yc);
     PT.switchYKPoint = buildSwitchMap(PT.raw.yk);
     PT.switchENPoint = buildSwitchMap(PT.raw.en);
+
+    PT.addrToSwitchYX = buildAddrToSwitch(PT.raw.yx);
+    PT.addrToSwitchYC = buildAddrToSwitch(PT.raw.yc);
+    PT.addrToSwitchYK = buildAddrToSwitch(PT.raw.yk);
+    PT.addrToSwitchEN = buildAddrToSwitch(PT.raw.en);
 
     PT.maps.para = new Map();
     for (const r of PT.raw.para) if (r.UpAddr) PT.maps.para.set(Number(r.UpAddr), String(r.Name ?? '').trim());
@@ -699,29 +724,26 @@ function ptName(type, addr, proto) {
   const is101 = String(proto || '').trim() === '101';
   const isTransfer = PT.curTable !== null && PT.curTable !== '全点表';
 
-  const resolve = (key, fromMap, fallbackMap) => {
-    const name = fromMap.get(key);
-    if (name) return name;
-    return fallbackMap ? (fallbackMap.get(key) ?? '') : '';
-  };
-
-  if (is101 && !PT.follow101Transfer) {
+  if (is101) {
+    // 101：IOA 直接等于 Addr，无偏移
+    // 转发开启且选了转发表时查 addrToSwitch（Addr→SwitchName），否则查 allXXPoint（Addr→Name）
+    const useTransfer = PT.follow101Transfer && isTransfer;
     switch (type) {
-      case 'yx': return resolve(n, PT.allYXPoint);
-      case 'yc': return resolve(n, PT.allYCPoint);
-      case 'yk': return resolve(n, PT.allYKPoint);
-      case 'en': return resolve(n, PT.allENPoint);
+      case 'yx': return (useTransfer ? PT.addrToSwitchYX : PT.allYXPoint).get(n) ?? '';
+      case 'yc': return (useTransfer ? PT.addrToSwitchYC : PT.allYCPoint).get(n) ?? '';
+      case 'yk': return (useTransfer ? PT.addrToSwitchYK : PT.allYKPoint).get(n) ?? '';
+      case 'en': return (useTransfer ? PT.addrToSwitchEN : PT.allENPoint).get(n) ?? '';
       case 'para': return PT.maps.para.get(n) ?? '';
       default: return '';
     }
   }
 
-  // 104 或 101转发打开时：更贴近转发表匹配 + 104偏移规则
+  // 104：转发表有偏移，全点表直接用 Addr
   switch (type) {
-    case 'yx': return resolve(n, PT.switchYXPoint, PT.allYXPoint);
-    case 'yc': return resolve(n - (isTransfer ? 0x4000 : 0), PT.switchYCPoint, PT.allYCPoint);
-    case 'yk': return resolve(n - (isTransfer ? 0x6000 : 0), PT.switchYKPoint, PT.allYKPoint);
-    case 'en': return resolve(n - (isTransfer ? 0x6400 : 0), PT.switchENPoint, PT.allENPoint);
+    case 'yx': return PT.switchYXPoint.get(n)                          ?? PT.allYXPoint.get(n) ?? '';
+    case 'yc': return PT.switchYCPoint.get(isTransfer ? n - 0x4000 : n) ?? PT.allYCPoint.get(n) ?? '';
+    case 'yk': return PT.switchYKPoint.get(isTransfer ? n - 0x6000 : n) ?? PT.allYKPoint.get(n) ?? '';
+    case 'en': return PT.switchENPoint.get(isTransfer ? n - 0x6400 : n) ?? PT.allENPoint.get(n) ?? '';
     case 'para': return PT.maps.para.get(n) ?? '';
     default: return '';
   }
@@ -729,6 +751,15 @@ function ptName(type, addr, proto) {
 
 function apply101FollowToggle() {
   PT.follow101Transfer = document.getElementById('follow101Toggle').checked;
+  const sel = document.getElementById('tableSelect');
+  // 开启转发时，若未选表则自动选第一个具名表
+  if (PT.follow101Transfer && sel && !sel.value && PT.tableNames.length) {
+    const firstTable = PT.tableNames.find(t => t !== null);
+    if (firstTable) sel.value = firstTable;
+  }
+  // 无论如何都重建 maps，确保 isTransfer 逻辑与当前选表一致
+  const tname = sel ? sel.value : '';
+  rebuildPointMaps(tname === '__null__' || tname === '' ? null : tname);
   if (parseResult) renderResult(parseResult);
 }
 function esc(s) {
