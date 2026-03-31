@@ -10,16 +10,25 @@
 *::-webkit-scrollbar-track{background:var(--bg-tertiary);border-radius:999px}
 *::-webkit-scrollbar-thumb{background:var(--border-color);border-radius:999px;border:2px solid var(--bg-secondary)}
 *::-webkit-scrollbar-thumb:hover{background:#94a3b8}
-.titlebar{position:fixed;top:0;left:0;right:0;height:36px;display:flex;align-items:center;padding:0 10px;background:var(--bg-secondary);border-bottom:1px solid var(--border-light);-webkit-app-region:drag;z-index:999}
+.titlebar{position:fixed;top:0;left:0;right:0;height:36px;display:flex;align-items:center;padding:0 10px;background:var(--bg-secondary);border-bottom:1px solid var(--border-light);-webkit-app-region:drag;z-index:1000;border-radius:10px 10px 0 0}
 .titlebar .title{font-weight:700;color:var(--text-primary);user-select:none}
 .titlebar .window-controls{margin-left:auto;display:flex;gap:4px}
 .window-controls button{width:42px;height:30px;display:flex;align-items:center;justify-content:center;border:none;border-radius:6px;background:transparent;color:var(--text-secondary);font-size:.85rem;cursor:pointer;-webkit-app-region:no-drag}
 .window-controls button:hover{background:var(--hover-bg)}
 .window-controls .close:hover{background:#fee2e2;color:#dc2626}
 html:not(.electron) .titlebar{display:none}
-html:not(.electron) body{padding-top:20px}
+html:not(.electron) .scroll-wrap{padding-top:20px}
+/* Electron 窗口整体圆角 */
+html.electron{background:#d0d7e2}
+html.dark-theme.electron{background:#020617}
+html.electron,html.electron body{border-radius:10px;overflow:hidden}
+html.electron .scroll-wrap{border-radius:0 0 10px 10px}
+html.electron.maximized,html.electron.maximized body{border-radius:0}
+html.electron.maximized .titlebar{border-radius:0}
 *{box-sizing:border-box}
-body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:var(--bg-primary);margin:0;padding:64px 20px 20px;min-height:100vh;color:var(--text-primary);transition:background-color .3s,color .3s}
+body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:var(--bg-primary);margin:0;padding:0;min-height:100vh;color:var(--text-primary);transition:background-color .3s,color .3s;height:100vh;overflow:hidden;position:relative}
+.scroll-wrap{position:absolute;top:0;left:0;right:0;bottom:0;overflow-y:auto;padding:20px}
+html.electron .scroll-wrap{top:36px;padding-top:10px}
 .container{max-width:1700px;margin:0 auto;background:var(--bg-secondary);border-radius:20px;box-shadow:0 20px 40px -8px rgba(0,0,0,.12);padding:28px;transition:background-color .3s}
 
 /* header */
@@ -250,6 +259,7 @@ html.dark-theme .time-hl{background:#451a03;color:#fcd34d;border:1px solid #7835
         <button id="close-btn" class="close" aria-label="关闭">✕</button>
     </div>
 </div>
+<div class="scroll-wrap">
 <div class="container">
   <h1>📄 Log 文件解析器 <span class="badge">104</span><span class="badge badge-101">101</span><span class="badge badge-log">LOG</span>
     <button id="themeToggle" class="theme-toggle" style="margin-left:auto">🌙 暗色</button>
@@ -339,6 +349,7 @@ html.dark-theme .time-hl{background:#451a03;color:#fcd34d;border:1px solid #7835
   <div class="output" id="output">
     <div class="empty-hint">上传 log 文件后点击「解析 Log」按钮开始</div>
   </div>
+</div>
 </div>
 
 <script>
@@ -1273,6 +1284,7 @@ function initializeWindowControls() {
 
     const updateMaxButton = (isMaximized) => {
         if (maxBtn) maxBtn.textContent = isMaximized ? '❐' : '▢';
+        document.documentElement.classList.toggle('maximized', isMaximized);
     };
 
     maxBtn?.addEventListener('click', async () => {
