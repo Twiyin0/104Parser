@@ -14,6 +14,9 @@ function createWindow() {
     height: 900,
     frame: false,
     titleBarStyle: 'hidden',
+    transparent: true,
+    roundedCorners: true,
+    hasShadow: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,

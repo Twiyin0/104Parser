@@ -114,6 +114,15 @@ SSH_PORT=22
 
 ## Changelog
 
+### [1.1.6] - 2026-03-31
+
+**修复**
+- 🪟 **Electron 亮色模式圆角修复**
+  - 修复亮色模式下窗口四角显示为直角的问题
+  - 启用 `transparent: true` 实现真正的透明圆角
+  - 将背景色移至 `.scroll-wrap` 层，由 `body` 的 `border-radius` + `overflow: hidden` 裁剪窗口形状
+  - 亮色/暗色模式圆角效果现已一致
+
 ### [1.1.5] - 2026-03-30
 
 **修复**
