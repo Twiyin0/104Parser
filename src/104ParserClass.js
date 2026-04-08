@@ -609,6 +609,12 @@ class Parser104 {
     }
     static _nosName(nos) { return nos === 0 ? '整体(无节)' : `第${nos}节`; }
     static _readLOF(buf, off) { return buf[off] | (buf[off+1] << 8) | (buf[off+2] << 16); }
+    static _readUInt32LE(buf, off) { return buf.readUInt32LE(off); }
+    static _sum8(buf) { let sum = 0; for (const b of buf) sum = (sum + b) & 0xFF; return sum; }
+    static _resultDesc(code, map) { return map[code] ?? `未知(${code})`; }
+    static _readAscii(buf, offset, len) {
+        return buf.slice(offset, offset + len).toString('ascii');
+    }
 
     // TI=120 文件可用 F_AF_NA: IOA(3)+NOF(2)+LOF(3)+SRQ(1)
     static parseFileAvailable(asdu, offset, cot, addr) {
@@ -738,6 +744,207 @@ class Parser104 {
             chs, chsHex:`0x${chs.toString(16).padStart(2,'0')}`,
             cot, addr,
         };
+    }
+
+    static parseFileService210(asdu, offset, cot, addr) {
+        const packetTypeMap = { 1:'备用', 2:'文件传输', 3:'备用', 4:'备用' };
+        const opMap = {
+            1:'文件目录召唤',
+            2:'目录召唤确认',
+            3:'读文件激活',
+            4:'读文件激活确认',
+            5:'读文件数据传输',
+            6:'读文件数据传输确认',
+            7:'写文件激活',
+            8:'写文件激活确认',
+            9:'写文件数据传输',
+            10:'写文件数据传输确认',
+        };
+        const dirResultMap = { 0:'成功', 1:'失败' };
+        const readActivateResultMap = { 0:'成功', 1:'失败' };
+        const writeActivateResultMap = { 0:'成功', 1:'未知错误', 2:'文件名不支持', 3:'长度超范围' };
+        const transferConfirmMap = {
+            0:'成功/无后续',
+            1:'有后续/未知错误',
+            2:'校验和错误',
+            3:'文件长度不对应',
+            4:'文件ID与激活ID不一致',
+        };
+
+        if (asdu.length - offset < 4) throw new Error('TI=210 file service too short');
+        const infoObjAddr = asdu.readUInt16LE(offset) | (asdu.readUInt8(offset + 2) << 16); offset += 3;
+        const packetType = asdu.readUInt8(offset); offset += 1;
+        const packetTypeName = packetTypeMap[packetType] ?? `未知(${packetType})`;
+        const base = {
+            type: 'file_service',
+            service: 'F_FR_NA_1',
+            tiName: 'F_FR_NA_1',
+            infoObjAddr,
+            packetType,
+            packetTypeName,
+            cot,
+            addr,
+        };
+
+        if (packetType !== 2) {
+            return {
+                ...base,
+                desc: `文件服务附加包类型${packetTypeName}`,
+                rawHex: asdu.slice(offset).toString('hex').toUpperCase(),
+            };
+        }
+        if (asdu.length - offset < 1) throw new Error('TI=210 missing operation code');
+
+        const op = asdu.readUInt8(offset); offset += 1;
+        const opName = opMap[op] ?? `未知操作(${op})`;
+        const result = { ...base, op, opName, desc: opName };
+
+        switch (op) {
+            case 1: {
+                if (asdu.length - offset < 4 + 1) throw new Error('目录召唤报文长度不足');
+                const directoryId = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                const dirNameLen = asdu.readUInt8(offset); offset += 1;
+                if (asdu.length - offset < dirNameLen + 1 + 7 + 7) throw new Error('目录召唤目录名/时间长度不足');
+                const directoryName = Parser104._readAscii(asdu, offset, dirNameLen); offset += dirNameLen;
+                const queryFlag = asdu.readUInt8(offset); offset += 1;
+                const queryFlagName = queryFlag === 0 ? '目录下所有文件' : queryFlag === 1 ? '目录下满足搜索时间段的文件' : `未知(${queryFlag})`;
+                const startTime = Parser104.parseCP56Time2a(asdu, offset); offset += 7;
+                const endTime = Parser104.parseCP56Time2a(asdu, offset); offset += 7;
+                Object.assign(result, { directoryId, directoryName, dirNameLen, queryFlag, queryFlagName, startTime, endTime });
+                break;
+            }
+            case 2: {
+                if (asdu.length - offset < 1 + 4 + 1 + 1) throw new Error('目录召唤确认长度不足');
+                const resultCode = asdu.readUInt8(offset); offset += 1;
+                const directoryId = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                const hasMore = asdu.readUInt8(offset); offset += 1;
+                const fileCount = asdu.readUInt8(offset); offset += 1;
+                const entries = [];
+                for (let i = 0; i < fileCount; i++) {
+                    if (asdu.length - offset < 1) throw new Error('目录文件名长度缺失');
+                    const nameLen = asdu.readUInt8(offset); offset += 1;
+                    if (asdu.length - offset < nameLen + 1 + 4 + 7) throw new Error('目录文件项长度不足');
+                    const fileName = Parser104._readAscii(asdu, offset, nameLen); offset += nameLen;
+                    const fileAttr = asdu.readUInt8(offset); offset += 1;
+                    const fileSize = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                    const fileTime = Parser104.parseCP56Time2a(asdu, offset); offset += 7;
+                    entries.push({ fileName, fileAttr, fileSize, fileTime });
+                }
+                Object.assign(result, {
+                    resultCode,
+                    resultDesc: Parser104._resultDesc(resultCode, dirResultMap),
+                    directoryId,
+                    hasMore,
+                    hasMoreDesc: hasMore ? '有后续' : '无后续',
+                    fileCount,
+                    entries,
+                });
+                break;
+            }
+            case 3: {
+                if (asdu.length - offset < 1) throw new Error('读文件激活长度不足');
+                const fileNameLen = asdu.readUInt8(offset); offset += 1;
+                if (asdu.length - offset < fileNameLen) throw new Error('读文件激活文件名长度不足');
+                const fileName = Parser104._readAscii(asdu, offset, fileNameLen); offset += fileNameLen;
+                Object.assign(result, { fileNameLen, fileName });
+                break;
+            }
+            case 4: {
+                if (asdu.length - offset < 1 + 1) throw new Error('读文件激活确认长度不足');
+                const resultCode = asdu.readUInt8(offset); offset += 1;
+                const fileNameLen = asdu.readUInt8(offset); offset += 1;
+                if (asdu.length - offset < fileNameLen + 4 + 4) throw new Error('读文件激活确认内容长度不足');
+                const fileName = Parser104._readAscii(asdu, offset, fileNameLen); offset += fileNameLen;
+                const fileId = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                const fileSize = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                Object.assign(result, {
+                    resultCode,
+                    resultDesc: Parser104._resultDesc(resultCode, readActivateResultMap),
+                    fileNameLen,
+                    fileName,
+                    fileId,
+                    fileSize,
+                });
+                break;
+            }
+            case 5:
+            case 9: {
+                if (asdu.length - offset < 4 + 4 + 1 + 1) throw new Error('文件数据传输长度不足');
+                const fileId = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                const segmentNo = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                const hasMore = asdu.readUInt8(offset); offset += 1;
+                const dataLen = asdu.length - offset - 1;
+                if (dataLen < 0) throw new Error('文件数据传输校验码缺失');
+                const fileData = asdu.slice(offset, offset + dataLen); offset += dataLen;
+                const checksum = asdu.readUInt8(offset); offset += 1;
+                Object.assign(result, {
+                    fileId,
+                    segmentNo,
+                    hasMore,
+                    hasMoreDesc: hasMore ? '有后续' : '无后续',
+                    dataLen,
+                    dataHex: fileData.toString('hex').toUpperCase().replace(/(.{64})/g, '$1\n').trim(),
+                    checksum,
+                    checksumHex: `0x${checksum.toString(16).padStart(2, '0')}`,
+                    checksumCalc: Parser104._sum8(fileData),
+                    checksumCalcHex: `0x${Parser104._sum8(fileData).toString(16).padStart(2, '0')}`,
+                    checksumValid: Parser104._sum8(fileData) === checksum,
+                });
+                break;
+            }
+            case 6:
+            case 10: {
+                if (asdu.length - offset < 4 + 4 + 1) throw new Error('文件数据传输确认长度不足');
+                const fileId = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                const segmentNo = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                const resultCode = asdu.readUInt8(offset); offset += 1;
+                const resultMap = op === 6
+                    ? { 0:'无后续', 1:'有后续' }
+                    : transferConfirmMap;
+                Object.assign(result, {
+                    fileId,
+                    segmentNo,
+                    resultCode,
+                    resultDesc: Parser104._resultDesc(resultCode, resultMap),
+                });
+                break;
+            }
+            case 7: {
+                if (asdu.length - offset < 1) throw new Error('写文件激活长度不足');
+                const fileNameLen = asdu.readUInt8(offset); offset += 1;
+                if (asdu.length - offset < fileNameLen + 4 + 4) throw new Error('写文件激活内容长度不足');
+                const fileName = Parser104._readAscii(asdu, offset, fileNameLen); offset += fileNameLen;
+                const fileId = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                const fileSize = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                Object.assign(result, { fileNameLen, fileName, fileId, fileSize });
+                break;
+            }
+            case 8: {
+                if (asdu.length - offset < 1 + 1) throw new Error('写文件激活确认长度不足');
+                const resultCode = asdu.readUInt8(offset); offset += 1;
+                const fileNameLen = asdu.readUInt8(offset); offset += 1;
+                if (asdu.length - offset < fileNameLen + 4 + 4) throw new Error('写文件激活确认内容长度不足');
+                const fileName = Parser104._readAscii(asdu, offset, fileNameLen); offset += fileNameLen;
+                const fileId = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                const fileSize = Parser104._readUInt32LE(asdu, offset); offset += 4;
+                Object.assign(result, {
+                    resultCode,
+                    resultDesc: Parser104._resultDesc(resultCode, writeActivateResultMap),
+                    fileNameLen,
+                    fileName,
+                    fileId,
+                    fileSize,
+                });
+                break;
+            }
+            default:
+                Object.assign(result, {
+                    rawHex: asdu.slice(offset).toString('hex').toUpperCase(),
+                });
+                break;
+        }
+
+        return result;
     }
 
     // ── TI=210(0xD2) 私有扩展文件目录服务（南网/南瑞等厂家扩展）────────
@@ -913,9 +1120,8 @@ class Parser104 {
                     return { ...Parser104.parseLastSegment(asdu, offset, cotRaw, addr), pn, test, cotDesc };
                 case 127:
                     return { ...Parser104.parseFileAck(asdu, offset, cotRaw, addr), pn, test, cotDesc };
-                // 私有扩展文件目录服务（TI=210, 0xD2）
                 case 210:
-                    return { ...Parser104.parsePrivateFileDir(asdu, offset, cotRaw, addr), pn, test, cotDesc };
+                    return { ...Parser104.parseFileService210(asdu, offset, cotRaw, addr), pn, test, cotDesc };
                 default:
                     return { type:'unknown', ti, tiHex:`0x${ti.toString(16).padStart(2,'0')}`,
                              cot: cotRaw, cotDesc, addr, pn, test };

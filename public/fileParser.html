@@ -805,14 +805,14 @@ function typeTag(type) {
     yc:'遥测',yx:'遥信',soe:'SOE',control:'遥控',param:'定值',
     energy:'电能',fault:'故障',clock:'对时',total_call:'总召',
     link_frame:'链路帧',heartbeat:'心跳',init:'初始化',
-    file:'文件',reset:'复位',test:'测试'
+    file_service:'文件服务',file:'文件',reset:'复位',test:'测试'
   };
   const label = map[type] || type || '?';
   const cls = {
     yc:'yc',yx:'yx',soe:'yx',control:'ctrl',param:'ctrl',
     energy:'energy',fault:'fault',clock:'clock',total_call:'total',
     link_frame:'link',heartbeat:'test',init:'total',
-    file:'other',reset:'other',test:'test'
+    file_service:'other',file:'other',reset:'other',test:'test'
   }[type] || 'other';
   return `<span class="tag-${cls}">${esc(label)}</span>`;
 }
@@ -899,6 +899,7 @@ function summarizeFrames(frames) {
     if (t === 'link_frame') return '链路帧';
     if (t === 'heartbeat') return '心跳';
     if (t === 'init') return '初始化';
+    if (t === 'file_service') return `文件服务(${esc(f.opName||f.desc||f.service||'')})`;
     if (t === 'error') return '⚠解析错误';
     return t;
   });
@@ -927,6 +928,7 @@ function renderFrame(f, idx, proto) {
   else if (f.type === 'energy') body = renderEnergy(f, proto);
   else if (f.type === 'link_frame') body = renderLinkFrame(f);
   else if (f.type === 'param') body = renderParam(f, proto);
+  else if (f.type === 'file_service') body = renderFileService(f);
   else body = `<div class="frame-json">${highlightTime(esc(JSON.stringify(f, null, 2)))}</div>`;
 
   const countStr = f.data ? ` <small class="frame-count">(${f.data.length}条)</small>` : '';
@@ -1088,6 +1090,139 @@ function renderLinkFrame(f) {
   </div>`;
 }
 
+function renderFileService(f) {
+  const rows = [];
+  const add = (label, val) => {
+    if (val == null || val === '') return;
+    rows.push(`<tr><td style="white-space:nowrap;color:var(--text-tertiary);font-size:.78rem">${esc(label)}</td><td>${highlightTime(esc(String(val)))}</td></tr>`);
+  };
+
+  add('服务类型', f.service);
+  add('描述', f.desc);
+  add('操作', f.opName);
+  add('COT', f.cotDesc != null ? `${f.cot} (${f.cotDesc})` : f.cot);
+  add('公共地址', f.addr);
+
+  // TI=210 私有文件服务
+  if (f.service === 'F_FR_NA_1') {
+    add('包类型', f.packetTypeName);
+    add('信息对象地址', f.infoObjAddr);
+    // op=1 目录召唤
+    if (f.directoryName != null) {
+      add('目录ID', f.directoryId);
+      add('目录名', f.directoryName);
+      add('查询方式', f.queryFlagName);
+      add('起始时间', f.startTime);
+      add('结束时间', f.endTime);
+    }
+    // op=2 目录召唤确认
+    if (f.entries != null) {
+      add('结果', f.resultDesc);
+      add('目录ID', f.directoryId);
+      add('有后续', f.hasMoreDesc);
+      add('文件数', f.fileCount);
+      if (f.entries.length) {
+        const entryRows = f.entries.map((e, i) => `<tr>
+          <td>${i+1}</td>
+          <td>${esc(e.fileName)}</td>
+          <td>${e.fileSize != null ? e.fileSize + ' 字节' : ''}</td>
+          <td>${esc(e.fileAttr != null ? '0x'+e.fileAttr.toString(16).padStart(2,'0') : '')}</td>
+          <td>${highlightTime(esc(e.fileTime||''))}</td>
+        </tr>`).join('');
+        return `<table><thead><tr><th colspan="2" style="text-align:left">${esc(f.desc||f.opName||'文件服务')}</th></tr></thead><tbody>${rows.map(r=>`<tr>${r.match(/<td.*?<\/td><td.*?<\/td>/)?.[0]||r}</tr>`).join('')}</tbody></table>
+        <div class="frame-block-header">📁 文件列表</div>
+        <table><thead><tr><th>#</th><th>文件名</th><th>大小</th><th>属性</th><th>时间</th></tr></thead><tbody>${entryRows}</tbody></table>`;
+      }
+    }
+    // op=3/7 激活（读/写）
+    if (f.fileName != null && f.fileId == null) {
+      add('文件名', f.fileName);
+    }
+    // op=4/8 激活确认
+    if (f.fileId != null) {
+      add('结果', f.resultDesc);
+      add('文件名', f.fileName);
+      add('文件ID', f.fileId);
+      add('文件大小', f.fileSize != null ? f.fileSize + ' 字节' : null);
+    }
+    // op=5/9 数据传输
+    if (f.segmentNo != null && f.dataHex != null) {
+      add('文件ID', f.fileId);
+      add('段号', f.segmentNo);
+      add('有后续', f.hasMoreDesc);
+      add('数据长度', f.dataLen != null ? f.dataLen + ' 字节' : null);
+      add('校验码', f.checksumHex + (f.checksumValid ? ' ✓' : ` ✗(计算值${f.checksumCalcHex})`));
+    }
+    // op=6/10 传输确认
+    if (f.segmentNo != null && f.resultDesc != null && f.dataHex == null) {
+      add('文件ID', f.fileId);
+      add('段号', f.segmentNo);
+      add('结果', f.resultDesc);
+    }
+  }
+
+  // TI=210 私有目录服务 (PRIV_DIR)
+  if (f.service === 'PRIV_DIR') {
+    add('查询方式', f.subTypeName);
+    add('文件数', f.fileCount);
+    if ((f.files||[]).length) {
+      const fileRows = f.files.map((fi, i) => `<tr>
+        <td>${i+1}</td>
+        <td>${esc(fi.name)}</td>
+        <td>${esc(fi.fileCategory)}</td>
+        <td>${esc(fi.fileTypeName)}</td>
+        <td>${highlightTime(esc(fi.startTime||''))}</td>
+        <td>${highlightTime(esc(fi.endTime||''))}</td>
+      </tr>`).join('');
+      return `<table><thead><tr><th colspan="2" style="text-align:left">${esc(f.desc||'文件目录')}</th></tr></thead><tbody>
+        ${rows.map(r => r).join('')}
+      </tbody></table>
+      <div class="frame-block-header">📁 文件列表</div>
+      <table><thead><tr><th>#</th><th>文件名</th><th>类型</th><th>过滤</th><th>起始时间</th><th>结束时间</th></tr></thead><tbody>${fileRows}</tbody></table>`;
+    }
+  }
+
+  // TI=120~127 标准文件服务
+  if (f.nof != null) {
+    add('文件编号(NOF)', `${f.nof} (${f.nofName||''})`);
+    if (f.nos != null) add('节编号(NOS)', `${f.nos} (${f.nosName||''})`);
+    if (f.lof != null) add('文件长度', f.size || f.lof);
+    if (f.los != null) add('节长度', f.los);
+    if (f.srq != null) add('状态', f.status);
+    if (f.scqDesc != null) add('召唤限定词', f.scqDesc);
+    if (f.frq != null) { add('传输结果', f.result); add('传输条件', f.condition); }
+    if (f.lsqDesc != null) add('结束标志', f.lsqDesc);
+    if (f.chs != null) add('校验和', f.chsHex);
+    if (f.ackType != null) { add('确认类型', f.ackType); add('错误原因', f.reason); }
+    if (f.lastModified != null) add('最后修改', f.lastModified);
+    // 目录条目
+    if ((f.entries||[]).length) {
+      const entryRows = f.entries.map((e, i) => `<tr>
+        <td>${i+1}</td>
+        <td>${e.nof}</td>
+        <td>${esc(e.nofName)}</td>
+        <td>${esc(e.size)}</td>
+        <td>${esc(e.status)}</td>
+        <td>${highlightTime(esc(e.lastModified||''))}</td>
+      </tr>`).join('');
+      return `<table><thead><tr><th colspan="2" style="text-align:left">${esc(f.desc||'文件目录')}</th></tr></thead><tbody>
+        ${rows.join('')}
+      </tbody></table>
+      <div class="frame-block-header">📁 目录条目</div>
+      <table><thead><tr><th>#</th><th>NOF</th><th>文件类型</th><th>大小</th><th>状态</th><th>时间</th></tr></thead><tbody>${entryRows}</tbody></table>`;
+    }
+    // 段落数据
+    if (f.dataHex != null) {
+      add('数据长度', f.dataLen != null ? f.dataLen + ' 字节' : null);
+      return `<table><thead><tr><th colspan="2" style="text-align:left">${esc(f.desc||'文件段落')}</th></tr></thead><tbody>${rows.join('')}</tbody></table>
+      <div class="frame-block-header">📦 数据(HEX)</div>
+      <div class="frame-json" style="word-break:break-all">${esc(f.dataHex)}</div>`;
+    }
+  }
+
+  return `<table><thead><tr><th style="text-align:left">${esc(f.desc||f.opName||f.service||'文件服务')}</th><th></th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+}
+
 function toggleBlock(id) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -1212,6 +1347,27 @@ function downloadLog() {
           const val = typeof item.value==='number' ? item.value.toFixed(3) : (item.value??'');
           parts.push(`  ${i+1}\t${proto}\t${item.addr??''}\t${addrHex(item.addr,proto)}\t${name}\t${val}\t${item.time||''}`);
         });
+      } else if (f.type === 'file_service') {
+        const desc = f.opName || f.desc || f.service || '文件服务';
+        parts.push(`  描述: ${desc}`);
+        if (f.fileName != null) parts.push(`  文件名: ${f.fileName}`);
+        if (f.fileId != null)   parts.push(`  文件ID: ${f.fileId}`);
+        if (f.fileSize != null) parts.push(`  文件大小: ${f.fileSize} 字节`);
+        if (f.segmentNo != null) parts.push(`  段号: ${f.segmentNo}  有后续: ${f.hasMoreDesc||''}`);
+        if (f.dataLen != null)  parts.push(`  数据长度: ${f.dataLen} 字节`);
+        if (f.checksumValid != null) parts.push(`  校验: ${f.checksumValid ? '✓' : '✗'}`);
+        if (f.resultDesc != null) parts.push(`  结果: ${f.resultDesc}`);
+        if ((f.entries||[]).length) {
+          f.entries.forEach((e, i) => {
+            const name = e.fileName || (e.nofName ? `NOF=${e.nof}(${e.nofName})` : '');
+            parts.push(`  [${i+1}] ${name}  大小:${e.fileSize||e.lof||e.size||''}  时间:${e.fileTime||e.lastModified||''}`);
+          });
+        }
+        if ((f.files||[]).length) {
+          f.files.forEach((fi, i) => {
+            parts.push(`  [${i+1}] ${fi.name}  类型:${fi.fileCategory||''}  ${fi.startTime||''}~${fi.endTime||''}`);
+          });
+        }
       } else {
         parts.push(`  ${JSON.stringify(f)}`);
       }

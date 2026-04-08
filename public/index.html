@@ -1053,7 +1053,7 @@ function renderAll(results) {
             if(frame.dataLen!=null){ lines.push("段数据长度: "+frame.dataLen+" 字节"); if(frame.dataHex) lines.push("数据(HEX):\n"+esc(frame.dataHex)); }
             if(frame.files?.length){ lines.push("\n文件列表 ("+frame.files.length+" 个):"); frame.files.forEach((f,i)=>{ var cat=f.fileCategory&&f.fileCategory!==f.name?" ["+esc(f.fileCategory)+"]":""; lines.push("  "+(i+1)+". "+esc(f.name)+cat+"  查询:"+esc(f.fileTypeName)+"  时间:"+esc(f.startTime)+" ~ "+esc(f.endTime)); }); }
             if(frame.subTypeName) lines.push("查询类型: "+esc(frame.subTypeName));
-            if(frame.entries?.length){ lines.push("\n目录 ("+frame.entries.length+" 个文件):"); frame.entries.forEach((e,i)=>lines.push("  "+(i+1)+". "+esc(e.nofName)+" 大小:"+e.lof+"字节  修改:"+esc(e.lastModified)+"  状态:"+esc(e.status))); }
+            if(frame.entries?.length){ lines.push("\n目录 ("+frame.entries.length+" 个文件):"); frame.entries.forEach((e,i)=>{ const sz=e.fileSize??e.lof??''; const tm=e.fileTime??e.lastModified??''; const nm=e.fileName??e.nofName??''; lines.push("  "+(i+1)+". "+esc(nm)+" 大小:"+(sz?sz+"字节":"—")+"  时间:"+esc(tm)+"  状态:"+esc(e.status??'')); }); }
             lines.push("公共地址: "+frame.addr+"  COT: "+esc(frame.cotDesc||frame.cot));
             evNodes.push("<div class='fault-card'><div class='fault-head' onclick='toggleFault(this)'><span class='fault-title' style='color:#67e8f9'>"+pb+icon+" "+esc(frame.service||'FILE')+" &nbsp; "+esc(frame.desc)+"</span><span class='fault-chev'>&#9662;</span></div><div class='fault-body' style='max-height:1000px'><div class='fault-inner' style='color:#a5f3fc'>"+lines.join("\n")+"</div></div></div>");
             break;
